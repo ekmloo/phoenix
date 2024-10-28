@@ -5,9 +5,8 @@ const fetch = require('node-fetch');
 
 app.use(bodyParser.json());
 
-const BOT_TOKEN = process.env.BOT_TOKEN; // Add your bot token in Vercel environment variables
+const BOT_TOKEN = process.env.BOT_TOKEN;
 
-// Telegram webhook route
 app.post('/webhook', (req, res) => {
     const message = req.body.message;
     if (message) {
@@ -15,15 +14,12 @@ app.post('/webhook', (req, res) => {
         const text = message.text;
 
         if (text === '/start') {
-            // Send a quick launch message
             sendMessage(chatId, "Welcome to Phoenix! 🐦‍🔥 You can launch Solana tokens quick.");
         }
-        // Add more commands as needed
     }
     res.sendStatus(200);
 });
 
-// Send message function
 const sendMessage = (chatId, text) => {
     fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
         method: 'POST',
@@ -32,4 +28,4 @@ const sendMessage = (chatId, text) => {
     });
 };
 
-module.exports = app;
+module.exports = app;  // Ensure app is exported like this
