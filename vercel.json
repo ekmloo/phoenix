@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "functions": {
+    "api/index.js": {
+      "runtime": "nodejs14.x"
+    }
+  },
+  "routes": [
+    { "src": "/webhook", "dest": "/api/index.js" }
+  ]
+}
