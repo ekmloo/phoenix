@@ -5,10 +5,15 @@ const mongoose = require('mongoose');
 const crypto = require('crypto');
 const { Keypair } = require('@solana/web3.js');
 
-// Environment Variables (Set these in Vercel)
+// Log environment variables (temporary)
+console.log('BOT_TOKEN is set:', !!process.env.BOT_TOKEN);
+console.log('MONGODB_URI is set:', !!process.env.MONGODB_URI);
+console.log('ENCRYPTION_KEY is set:', !!process.env.ENCRYPTION_KEY);
+
+// Environment Variables
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const MONGODB_URI = process.env.MONGODB_URI;
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY; // Must be exactly 32 characters for AES-256-CBC
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY; // Must be exactly 32 characters
 
 // Validate Environment Variables
 if (!BOT_TOKEN || !MONGODB_URI || !ENCRYPTION_KEY) {
@@ -48,15 +53,6 @@ const encrypt = (text) => {
   return encrypted;
 };
 
-// Decryption Function (If needed in the future)
-const decrypt = (encrypted) => {
-  const iv = Buffer.alloc(16, 0); // Must match the IV used during encryption
-  const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY), iv);
-  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
-  decrypted += decipher.final('utf8');
-  return decrypted;
-};
-
 // /start Command Handler
 bot.start((ctx) => {
   ctx.reply('Welcome to Phoenix! 🔥 You can launch Solana tokens quickly.\n\nUse /wallet to create or view your Solana wallet.');
@@ -67,7 +63,7 @@ bot.command('wallet', async (ctx) => {
   const telegramId = ctx.from.id;
 
   try {
-    // Check if the user already has a wallet
+    // Check if user already has a wallet
     let user = await User.findOne({ telegramId });
 
     if (user) {
@@ -82,7 +78,7 @@ bot.command('wallet', async (ctx) => {
       // Encrypt the private key
       const encryptedPrivateKey = encrypt(JSON.stringify(privateKey));
 
-      // Save the user and wallet info to the database
+      // Save user to database
       user = new User({
         telegramId,
         walletPublicKey: publicKey,
@@ -101,8 +97,6 @@ bot.command('wallet', async (ctx) => {
     ctx.reply('❌ An error occurred while processing your request. Please try again later.');
   }
 });
-
-// Additional Commands (e.g., /create_token) can be added here
 
 // Export the webhook handler for Vercel
 module.exports = async (req, res) => {
