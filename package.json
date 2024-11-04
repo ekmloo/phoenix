@@ -2,14 +2,15 @@
   "name": "phoenix-bot",
   "version": "1.0.0",
   "scripts": {
-    "start": "node api/index.js"
+    "start": "node api/webhook.js"
   },
   "engines": {
     "node": "18.x"
   },
   "dependencies": {
-    "express": "^4.17.1",
-    "telegraf": "^4.4.0",
-    "dotenv": "^10.0.0"
+    "@solana/web3.js": "^1.73.0",
+    "dotenv": "^10.0.0",
+    "mongoose": "^6.0.0",
+    "telegraf": "^4.4.0"
   }
 }
