@@ -5,11 +5,6 @@ const mongoose = require('mongoose');
 const crypto = require('crypto');
 const { Keypair } = require('@solana/web3.js');
 
-// Log environment variables (temporary)
-console.log('BOT_TOKEN is set:', !!process.env.BOT_TOKEN);
-console.log('MONGODB_URI is set:', !!process.env.MONGODB_URI);
-console.log('ENCRYPTION_KEY is set:', !!process.env.ENCRYPTION_KEY);
-
 // Environment Variables
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -24,16 +19,25 @@ if (!BOT_TOKEN || !MONGODB_URI || !ENCRYPTION_KEY) {
 // Initialize Telegraf Bot
 const bot = new Telegraf(BOT_TOKEN);
 
-// Connect to MongoDB
-mongoose.connect(MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-  .then(() => console.log('[+] Connected to MongoDB'))
-  .catch(err => {
+// Mongoose Connection Cache
+let isConnected = false;
+
+const connectToDatabase = async () => {
+  if (isConnected) {
+    return;
+  }
+  try {
+    await mongoose.connect(MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    });
+    isConnected = true;
+    console.log('[+] Connected to MongoDB');
+  } catch (err) {
     console.error('[-] MongoDB connection error:', err);
-    process.exit(1);
-  });
+    throw err;
+  }
+};
 
 // Define User Schema and Model
 const userSchema = new mongoose.Schema({
@@ -42,7 +46,7 @@ const userSchema = new mongoose.Schema({
   walletPrivateKey: { type: String, required: true }, // Encrypted private key
 });
 
-const User = mongoose.model('User', userSchema);
+const User = mongoose.models.User || mongoose.model('User', userSchema);
 
 // Encryption Function
 const encrypt = (text) => {
@@ -63,6 +67,8 @@ bot.command('wallet', async (ctx) => {
   const telegramId = ctx.from.id;
 
   try {
+    await connectToDatabase();
+
     // Check if user already has a wallet
     let user = await User.findOne({ telegramId });
 
