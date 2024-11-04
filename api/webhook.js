@@ -2,25 +2,21 @@
 
 const { Telegraf } = require('telegraf');
 const mongoose = require('mongoose');
-const dotenv = require('dotenv');
 const crypto = require('crypto');
 const { Keypair } = require('@solana/web3.js');
 
-// Load environment variables from .env file
-dotenv.config();
-
-// Environment Variables
+// Environment Variables (Set these in Vercel)
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const MONGODB_URI = process.env.MONGODB_URI;
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY; // Must be 32 characters for AES-256
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY; // Must be exactly 32 characters for AES-256-CBC
 
 // Validate Environment Variables
 if (!BOT_TOKEN || !MONGODB_URI || !ENCRYPTION_KEY) {
-  console.error('[-] Missing necessary environment variables.');
+  console.error('[-] Missing necessary environment variables. Please set BOT_TOKEN, MONGODB_URI, and ENCRYPTION_KEY in Vercel.');
   process.exit(1);
 }
 
-// Initialize Telegraf bot
+// Initialize Telegraf Bot
 const bot = new Telegraf(BOT_TOKEN);
 
 // Connect to MongoDB
@@ -43,16 +39,19 @@ const userSchema = new mongoose.Schema({
 
 const User = mongoose.model('User', userSchema);
 
-// Encryption Functions
+// Encryption Function
 const encrypt = (text) => {
-  const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY), Buffer.alloc(16, 0));
+  const iv = Buffer.alloc(16, 0); // Initialization vector (should be random in production)
+  const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY), iv);
   let encrypted = cipher.update(text, 'utf8', 'hex');
   encrypted += cipher.final('hex');
   return encrypted;
 };
 
+// Decryption Function (If needed in the future)
 const decrypt = (encrypted) => {
-  const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY), Buffer.alloc(16, 0));
+  const iv = Buffer.alloc(16, 0); // Must match the IV used during encryption
+  const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY), iv);
   let decrypted = decipher.update(encrypted, 'hex', 'utf8');
   decrypted += decipher.final('utf8');
   return decrypted;
@@ -68,22 +67,22 @@ bot.command('wallet', async (ctx) => {
   const telegramId = ctx.from.id;
 
   try {
-    // Check if user already has a wallet
+    // Check if the user already has a wallet
     let user = await User.findOne({ telegramId });
 
     if (user) {
       // User exists, return their public key
-      ctx.reply(`✅ Your Solana wallet address:\n\`${user.walletPublicKey}\``, { parse_mode: 'Markdown' });
+      ctx.reply(`✅ *Your Solana wallet address:*\n\`${user.walletPublicKey}\``, { parse_mode: 'Markdown' });
     } else {
       // Create a new Solana wallet
       const keypair = Keypair.generate();
       const publicKey = keypair.publicKey.toBase58();
-      const privateKey = Array.from(keypair.secretKey);
+      const privateKey = Array.from(keypair.secretKey); // Convert Uint8Array to Array for JSON compatibility
 
       // Encrypt the private key
       const encryptedPrivateKey = encrypt(JSON.stringify(privateKey));
 
-      // Save user to database
+      // Save the user and wallet info to the database
       user = new User({
         telegramId,
         walletPublicKey: publicKey,
@@ -92,7 +91,7 @@ bot.command('wallet', async (ctx) => {
 
       await user.save();
 
-      // Send public key to user
+      // Send public key to the user
       ctx.reply(`🪙 *Your new Solana wallet has been created!*\n\n` +
         `*Public Key:* \`${publicKey}\`\n\n` +
         `*IMPORTANT:* Your private key is securely stored and encrypted. Do not share it with anyone.`, { parse_mode: 'Markdown' });
@@ -105,7 +104,7 @@ bot.command('wallet', async (ctx) => {
 
 // Additional Commands (e.g., /create_token) can be added here
 
-// Export the webhook handler
+// Export the webhook handler for Vercel
 module.exports = async (req, res) => {
   try {
     await bot.handleUpdate(req.body);
