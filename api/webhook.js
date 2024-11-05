@@ -1,11 +1,12 @@
-// webhook.js
+// api/webhook.js
 
 const { Telegraf, Markup } = require('telegraf');
 const crypto = require('crypto');
-const User = require('./models/user'); // Import the User model
-const connectDB = require('./utils/database'); // Import the database connection
-const { createWallet } = require('./utils/solana'); // Import the Solana wallet creator
+const User = require('../models/user'); // Updated path
+const connectDB = require('../utils/database'); // Updated path
+const { createWallet } = require('../utils/solana'); // Updated path
 const { Connection, clusterApiUrl, PublicKey } = require('@solana/web3.js');
+const mongoose = require('mongoose'); // Moved to top
 
 // Environment Variables
 const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -41,12 +42,17 @@ const decrypt = (encrypted) => {
   return decrypted;
 };
 
+// Suppress Mongoose Deprecation Warning
+mongoose.set('strictQuery', true);
+
 // Connect to Database
 connectDB();
 
 // /start Command Handler
 bot.start(async (ctx) => {
-  await ctx.reply('Welcome to Phoenix! 🔥 You can launch Solana tokens quickly.\n\nUse /wallet to create or view your Solana wallet.');
+  await ctx.reply(
+    'Welcome to Phoenix! 🔥 You can launch Solana tokens quickly.\n\nUse /wallet to create or view your Solana wallet.'
+  );
 });
 
 // /wallet Command Handler
@@ -59,9 +65,7 @@ bot.command('wallet', async (ctx) => {
 
     if (user) {
       // User exists, return their public key
-      await ctx.replyWithMarkdown(
-        `✅ *Your Solana wallet address:*\n\`${user.walletPublicKey}\``
-      );
+      await ctx.replyWithMarkdown(`✅ *Your Solana wallet address:*\n\`${user.walletPublicKey}\``);
     } else {
       // Create a new Solana wallet using the utility function
       const { publicKey, privateKey } = createWallet();
@@ -129,13 +133,12 @@ Available commands:
   await ctx.reply(helpMessage);
 });
 
-// Suppress Mongoose Deprecation Warning
-const mongoose = require('mongoose');
-mongoose.set('strictQuery', true);
-
-// Start the bot
-bot.launch();
-
-// Graceful shutdown
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+// Export the webhook handler for Vercel
+module.exports = async (req, res) => {
+  try {
+    await bot.handleUpdate(req.body, res);
+  } catch (error) {
+    console.error('Error handling update:', error);
+    res.status(500).send('Internal Server Error');
+  }
+};
