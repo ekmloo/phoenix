@@ -9,7 +9,7 @@ const createWallet = () => {
   const keypair = Keypair.generate();
   return {
     publicKey: keypair.publicKey.toBase58(),
-    privateKey: Array.from(keypair.secretKey)
+    privateKey: Array.from(keypair.secretKey), // Convert Uint8Array to Array
   };
 };
 
