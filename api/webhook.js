@@ -1,19 +1,27 @@
 // api/webhook.js
 
-const { Telegraf, Markup } = require('telegraf');
+const { Telegraf } = require('telegraf');
 const crypto = require('crypto');
-const User = require('../models/user'); // Updated path
-const connectDB = require('../utils/database'); // Updated path
-const { createWallet } = require('../utils/solana'); // Updated path
-const { Connection, clusterApiUrl, PublicKey } = require('@solana/web3.js');
-const mongoose = require('mongoose'); // Moved to top
+const User = require('../models/user');
+const connectDB = require('../utils/database');
+const { createWallet } = require('../utils/solana');
+const {
+  Connection,
+  clusterApiUrl,
+  PublicKey,
+  Keypair,
+  Transaction,
+  SystemProgram,
+} = require('@solana/web3.js');
+const mongoose = require('mongoose');
 
 // Environment Variables
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY; // Must be exactly 32 characters
+const MONGODB_URI = process.env.MONGODB_URI;
 
 // Validate Environment Variables
-if (!BOT_TOKEN || !ENCRYPTION_KEY || ENCRYPTION_KEY.length !== 32) {
+if (!BOT_TOKEN || !ENCRYPTION_KEY || ENCRYPTION_KEY.length !== 32 || !MONGODB_URI) {
   console.error('[-] Missing or invalid environment variables.');
   process.exit(1);
 }
@@ -107,7 +115,7 @@ bot.command('balance', async (ctx) => {
     const publicKey = new PublicKey(user.walletPublicKey);
 
     // Create a connection to the Solana cluster
-    const connection = new Connection(clusterApiUrl('mainnet-beta'));
+    const connection = new Connection(clusterApiUrl('mainnet-beta'), 'confirmed');
 
     // Get balance in lamports
     const balanceLamports = await connection.getBalance(publicKey);
@@ -121,6 +129,57 @@ bot.command('balance', async (ctx) => {
   }
 });
 
+// /send Command Handler
+bot.command('send', async (ctx) => {
+  const telegramId = ctx.from.id;
+  const args = ctx.message.text.split(' ').slice(1);
+
+  if (args.length < 2) {
+    return ctx.reply('Usage: /send <recipient_address> <amount_in_SOL>');
+  }
+
+  const recipientAddress = args[0];
+  const amountSOL = parseFloat(args[1]);
+
+  if (isNaN(amountSOL) || amountSOL <= 0) {
+    return ctx.reply('Please enter a valid amount of SOL.');
+  }
+
+  try {
+    const user = await User.findOne({ telegramId });
+
+    if (!user) {
+      return ctx.reply('❌ Wallet not found. Please create one using /wallet.');
+    }
+
+    // Decrypt the private key
+    const decryptedPrivateKey = decrypt(user.walletPrivateKey);
+    const privateKeyArray = JSON.parse(decryptedPrivateKey);
+    const fromKeypair = Keypair.fromSecretKey(Uint8Array.from(privateKeyArray));
+
+    const connection = new Connection(clusterApiUrl('mainnet-beta'), 'confirmed');
+
+    const recipientPublicKey = new PublicKey(recipientAddress);
+
+    const transaction = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: fromKeypair.publicKey,
+        toPubkey: recipientPublicKey,
+        lamports: amountSOL * 1e9, // Convert SOL to lamports
+      })
+    );
+
+    const signature = await connection.sendTransaction(transaction, [fromKeypair]);
+
+    await ctx.reply(
+      `✅ Transaction sent!\n\n🔗 Transaction Signature:\n${signature}\n\nYou can view the transaction on Solana Explorer: https://explorer.solana.com/tx/${signature}`
+    );
+  } catch (error) {
+    console.error('Error in /send command:', error);
+    await ctx.reply('❌ An error occurred while sending the transaction. Please try again later.');
+  }
+});
+
 // /help Command Handler
 bot.command('help', async (ctx) => {
   const helpMessage = `
@@ -128,6 +187,7 @@ Available commands:
 /start - Start the bot
 /wallet - Create or view your Solana wallet
 /balance - Check your wallet balance
+/send <address> <amount> - Send SOL to another address
 /help - Show this help message
 `;
   await ctx.reply(helpMessage);
