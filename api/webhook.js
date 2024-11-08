@@ -14,6 +14,7 @@ const {
   SystemProgram,
 } = require('@solana/web3.js');
 const mongoose = require('mongoose');
+const schedule = require('node-schedule');
 
 // Load environment variables
 require('dotenv').config();
@@ -92,31 +93,44 @@ bot.start(async (ctx) => {
       await ctx.reply(
         `Welcome to Phoenix! 🔥\n\nUse /wallet ${referralCode} to create your Solana wallet and receive a referral bonus!`
       );
-    } else {
-      await ctx.reply(
-        'Welcome to Phoenix! 🔥\n\nUse /wallet to create or view your Solana wallet.'
-      );
+      return;
     }
-  } else {
-    await ctx.reply(
-      'Welcome to Phoenix! 🔥\n\nUse /wallet to create or view your Solana wallet.'
-    );
   }
+
+  await ctx.reply(
+    'Welcome to Phoenix! 🔥\n\nUse /wallet to create or view your Solana wallet.'
+  );
 });
 
 // /referral Command Handler
 bot.command('referral', async (ctx) => {
   const telegramId = ctx.from.id;
   const referralLink = `https://t.me/phoenixbotsol?start=${telegramId}`;
-  await ctx.reply(`🔗 *Your referral link:*\n[Click here](${referralLink})`, { parse_mode: 'Markdown' });
+  await ctx.replyWithMarkdown(`🔗 *Your referral link:*\n[Click here](${referralLink})`);
 });
 
 // /about Command Handler
 bot.command('about', async (ctx) => {
-  await ctx.reply(
-    `🔥 *Phoenix Bot* 🔥\n\nPhoenix Bot allows you to create and manage your Solana wallets directly within Telegram. Invite friends using your referral link and earn a 50% commission on their fees!\n\nJoin our community: [t.me/phoenixbotsol](https://t.me/phoenixbotsol)`,
-    { parse_mode: 'Markdown' }
+  await ctx.replyWithMarkdown(
+    `🔥 *Phoenix Bot* 🔥\n\nPhoenix Bot allows you to create and manage your Solana wallets directly within Telegram. Invite friends using your referral link and earn a 50% commission on their fees!\n\nJoin our community: [t.me/phoenixbotsol](https://t.me/phoenixbotsol)`
   );
+});
+
+// /help Command Handler
+bot.command('help', async (ctx) => {
+  const helpMessage = `
+*Available Commands:*
+/start - Start the bot
+/referral - Get your referral link
+/about - About the bot
+/wallet [referral_code] - Create or view your Solana wallet. Optionally include a referral code.
+/balance - Check your wallet balance
+/send <address> <amount> - Send SOL to another address
+/help - Show this help message
+
+Join our community: [t.me/phoenixbotsol](https://t.me/phoenixbotsol)
+  `;
+  await ctx.replyWithMarkdown(helpMessage);
 });
 
 // /wallet Command Handler with optional referral
@@ -180,28 +194,34 @@ bot.command('wallet', async (ctx) => {
         referrer.referrals += 1;
         await referrer.save();
 
-        // Define bonus amount (e.g., 0.02 SOL)
-        const bonusSOL = 0.02;
-        const bonusLamports = bonusSOL * 1e9;
+        // Define fee amount (e.g., 0.02 SOL)
+        const feeSOL = 0.02;
+        const feeLamports = feeSOL * 1e9;
 
         // Create transaction to send 50% of the fee to referrer
         const transaction = new Transaction().add(
           SystemProgram.transfer({
             fromPubkey: botKeypair.publicKey,
             toPubkey: new PublicKey(referrer.walletPublicKey),
-            lamports: bonusLamports / 2, // 50% of the fee
+            lamports: feeLamports / 2, // 50% of the fee
           })
         );
 
-        // Sign and send the transaction
-        const signature = await connection.sendTransaction(transaction, [botKeypair]);
-        await connection.confirmTransaction(signature, 'confirmed');
+        // Schedule the transaction after 10 minutes
+        schedule.scheduleJob(Date.now() + 10 * 60 * 1000, async () => {
+          try {
+            const signature = await connection.sendTransaction(transaction, [botKeypair]);
+            await connection.confirmTransaction(signature, 'confirmed');
 
-        // Notify referrer
-        await bot.telegram.sendMessage(
-          referrer.telegramId,
-          `🎉 You received a referral bonus of ${bonusSOL / 2} SOL for inviting a new user!\n\n🔗 Transaction Signature:\n${signature}\n\nView on Solana Explorer: https://explorer.solana.com/tx/${signature}`
-        );
+            // Notify referrer
+            await bot.telegram.sendMessage(
+              referrer.telegramId,
+              `🎉 You received a referral bonus of ${feeSOL / 2} SOL for inviting a new user!\n\n🔗 Transaction Signature:\n${signature}\n\nView on Solana Explorer: https://explorer.solana.com/tx/${signature}`
+            );
+          } catch (err) {
+            console.error('Error sending referral bonus:', err);
+          }
+        });
       }
     }
 
@@ -263,8 +283,9 @@ bot.command('send', async (ctx) => {
       return ctx.reply('❌ Wallet not found. Please create one using /wallet.');
     }
 
-    // Define fee amount (e.g., 0.02 SOL)
-    const feeSOL = 0.02;
+    // Define fee amount (0.1%)
+    const feePercentage = 0.1;
+    const feeSOL = (amountSOL * feePercentage) / 100;
     const feeLamports = feeSOL * 1e9;
 
     // Decrypt the private key
@@ -325,21 +346,118 @@ bot.command('send', async (ctx) => {
   }
 });
 
-// /help Command Handler
-bot.command('help', async (ctx) => {
-  const helpMessage = `
-Available commands:
-/start - Start the bot
-/referral - Get your referral link
-/about - About the bot
-/wallet [referral_code] - Create or view your Solana wallet. Optionally include a referral code.
-/balance - Check your wallet balance
-/send <address> <amount> - Send SOL to another address
-/help - Show this help message
+// Scheduled Transaction Function
+const scheduleTransaction = async (telegramId, recipientAddress, amountSOL, delayMinutes) => {
+  // Define fee amount (0.9%)
+  const feePercentage = 0.9;
+  const feeSOL = (amountSOL * feePercentage) / 100;
+  const feeLamports = feeSOL * 1e9;
 
-Join our community: [t.me/phoenixbotsol](https://t.me/phoenixbotsol)
-  `;
-  await ctx.reply(helpMessage, { parse_mode: 'Markdown' });
+  try {
+    const user = await User.findOne({ telegramId });
+
+    if (!user || !user.walletPublicKey) {
+      console.log('Wallet not found for user:', telegramId);
+      return;
+    }
+
+    // Decrypt the private key
+    const decryptedPrivateKey = decrypt(user.walletPrivateKey);
+    const privateKeyArray = JSON.parse(decryptedPrivateKey);
+    const fromKeypair = Keypair.fromSecretKey(Uint8Array.from(privateKeyArray));
+
+    // Check if the bot has enough balance to cover the fee
+    const botBalance = await connection.getBalance(botKeypair.publicKey);
+    if (botBalance < feeLamports) {
+      console.log('Bot does not have enough SOL to cover the scheduled transaction fee.');
+      return;
+    }
+
+    // Create transaction
+    const transaction = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: fromKeypair.publicKey,
+        toPubkey: new PublicKey(recipientAddress),
+        lamports: amountSOL * 1e9, // Convert SOL to lamports
+      })
+    );
+
+    // Add fee transfer to referrer if applicable
+    if (user.referredBy) {
+      const referrer = await User.findOne({ telegramId: user.referredBy });
+      if (referrer && referrer.walletPublicKey) {
+        transaction.add(
+          SystemProgram.transfer({
+            fromPubkey: botKeypair.publicKey,
+            toPubkey: new PublicKey(referrer.walletPublicKey),
+            lamports: feeLamports / 2, // 50% of the fee
+          })
+        );
+      }
+    } else {
+      // If no referrer, keep the fee in the bot's wallet or handle as needed
+      transaction.add(
+        SystemProgram.transfer({
+          fromPubkey: botKeypair.publicKey,
+          toPubkey: botKeypair.publicKey, // Essentially, no transfer
+          lamports: feeLamports / 2,
+        })
+      );
+    }
+
+    // Schedule the transaction
+    schedule.scheduleJob(Date.now() + delayMinutes * 60 * 1000, async () => {
+      try {
+        const signature = await connection.sendTransaction(transaction, [fromKeypair, botKeypair]);
+        await connection.confirmTransaction(signature, 'confirmed');
+
+        // Notify user
+        await bot.telegram.sendMessage(
+          telegramId,
+          `⏰ Scheduled transaction executed!\n\n🔗 Transaction Signature:\n${signature}\n\nView on Solana Explorer: https://explorer.solana.com/tx/${signature}`
+        );
+      } catch (err) {
+        console.error('Error executing scheduled transaction:', err);
+      }
+    });
+
+    // Notify user about the scheduled transaction
+    await bot.telegram.sendMessage(
+      telegramId,
+      `🕒 Your transaction of ${amountSOL} SOL to ${recipientAddress} has been scheduled and will execute in ${delayMinutes} minutes.\n\n🔗 Once executed, you will receive a confirmation message with the transaction signature.`
+    );
+  } catch (error) {
+    console.error('Error scheduling transaction:', error);
+  }
+};
+
+// /schedule Command Handler
+bot.command('schedule', async (ctx) => {
+  const telegramId = ctx.from.id;
+  const args = ctx.message.text.split(' ').slice(1);
+
+  if (args.length < 3) {
+    return ctx.reply('Usage: /schedule <recipient_address> <amount_in_SOL> <delay_in_minutes>');
+  }
+
+  const recipientAddress = args[0];
+  const amountSOL = parseFloat(args[1]);
+  const delayMinutes = parseInt(args[2]);
+
+  if (isNaN(amountSOL) || amountSOL <= 0) {
+    return ctx.reply('Please enter a valid amount of SOL.');
+  }
+
+  if (isNaN(delayMinutes) || delayMinutes <= 0) {
+    return ctx.reply('Please enter a valid delay time in minutes.');
+  }
+
+  try {
+    await scheduleTransaction(telegramId, recipientAddress, amountSOL, delayMinutes);
+  } catch (error) {
+    console.error('Error in /schedule command:', error);
+    await ctx.reply('❌ An error occurred while scheduling your transaction. Please try again later.');
+  }
 });
 
 // Export the webhook handler for Vercel
