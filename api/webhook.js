@@ -16,9 +16,6 @@ const {
 const mongoose = require('mongoose');
 const schedule = require('node-schedule');
 
-// Load environment variables
-// No need for dotenv in production on Vercel
-
 // Environment Variables
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY; // Must be exactly 32 characters
@@ -86,12 +83,12 @@ bot.start(async (ctx) => {
   const referralCode = args[0]; // Expected to be the referrer's telegramId
 
   if (referralCode) {
-    // Check if referrer exists
+    // Check if referrer exists and is not the user themselves
     const referrer = await User.findOne({ telegramId: parseInt(referralCode) });
     if (referrer && referrer.telegramId !== ctx.from.id) {
       // Inform the user to use /wallet with referral code
       await ctx.reply(
-        `Welcome to Phoenix! 🔥\n\nUse /wallet ${referralCode} to create your Solana wallet and receive a referral bonus!`
+        `Welcome to Phoenix! 🔥\n\nUse /wallet to create your Solana wallet and receive a referral bonus!`
       );
       return;
     }
@@ -202,12 +199,12 @@ bot.command('wallet', async (ctx) => {
           SystemProgram.transfer({
             fromPubkey: botKeypair.publicKey,
             toPubkey: new PublicKey(referrer.walletPublicKey),
-            lamports: feeLamports / 2, // 50% of the fee
+            lamports: Math.round(feeLamports / 2), // 50% of the fee
           })
         );
 
         // Schedule the transaction after 10 minutes
-        schedule.scheduleJob(Date.now() + 10 * 60 * 1000, async () => {
+        schedule.scheduleJob(new Date(Date.now() + 10 * 60 * 1000), async () => {
           try {
             const signature = await connection.sendTransaction(transaction, [botKeypair]);
             await connection.confirmTransaction(signature, 'confirmed');
@@ -215,7 +212,7 @@ bot.command('wallet', async (ctx) => {
             // Notify referrer
             await bot.telegram.sendMessage(
               referrer.telegramId,
-              `🎉 You received a referral bonus of ${feeSOL / 2} SOL for inviting a new user!\n\n🔗 Transaction Signature:\n${signature}\n\nView on Solana Explorer: https://explorer.solana.com/tx/${signature}`
+              `🎉 You received a referral bonus of ${(feeSOL / 2).toFixed(4)} SOL for inviting a new user!\n\n🔗 Transaction Signature:\n${signature}\n\nView on Solana Explorer: https://explorer.solana.com/tx/${signature}`
             );
           } catch (err) {
             console.error('Error sending referral bonus:', err);
@@ -285,7 +282,7 @@ bot.command('send', async (ctx) => {
     // Define fee amount (0.1%)
     const feePercentage = 0.1;
     const feeSOL = (amountSOL * feePercentage) / 100;
-    const feeLamports = feeSOL * 1e9;
+    const feeLamports = Math.round(feeSOL * 1e9); // Ensure integer lamports
 
     // Decrypt the private key
     const decryptedPrivateKey = decrypt(user.walletPrivateKey);
@@ -303,7 +300,7 @@ bot.command('send', async (ctx) => {
       SystemProgram.transfer({
         fromPubkey: fromKeypair.publicKey,
         toPubkey: new PublicKey(recipientAddress),
-        lamports: amountSOL * 1e9, // Convert SOL to lamports
+        lamports: Math.round(amountSOL * 1e9), // Convert SOL to lamports
       })
     );
 
@@ -315,19 +312,14 @@ bot.command('send', async (ctx) => {
           SystemProgram.transfer({
             fromPubkey: botKeypair.publicKey,
             toPubkey: new PublicKey(referrer.walletPublicKey),
-            lamports: feeLamports / 2, // 50% of the fee
+            lamports: Math.round(feeLamports / 2), // 50% of the fee
           })
         );
       }
     } else {
       // If no referrer, keep the fee in the bot's wallet or handle as needed
-      transaction.add(
-        SystemProgram.transfer({
-          fromPubkey: botKeypair.publicKey,
-          toPubkey: botKeypair.publicKey, // Essentially, no transfer
-          lamports: feeLamports / 2,
-        })
-      );
+      // Here, we simply retain it in the bot's wallet by not transferring
+      // Alternatively, you can transfer it to another address or accumulate it
     }
 
     // Sign and send the transaction
@@ -376,7 +368,7 @@ bot.command('schedule', async (ctx) => {
     // Define fee amount (0.9%)
     const feePercentage = 0.9;
     const feeSOL = (amountSOL * feePercentage) / 100;
-    const feeLamports = feeSOL * 1e9;
+    const feeLamports = Math.round(feeSOL * 1e9); // Ensure integer lamports
 
     // Decrypt the private key
     const decryptedPrivateKey = decrypt(user.walletPrivateKey);
@@ -394,7 +386,7 @@ bot.command('schedule', async (ctx) => {
       SystemProgram.transfer({
         fromPubkey: fromKeypair.publicKey,
         toPubkey: new PublicKey(recipientAddress),
-        lamports: amountSOL * 1e9, // Convert SOL to lamports
+        lamports: Math.round(amountSOL * 1e9), // Convert SOL to lamports
       })
     );
 
@@ -406,23 +398,18 @@ bot.command('schedule', async (ctx) => {
           SystemProgram.transfer({
             fromPubkey: botKeypair.publicKey,
             toPubkey: new PublicKey(referrer.walletPublicKey),
-            lamports: feeLamports / 2, // 50% of the fee
+            lamports: Math.round(feeLamports / 2), // 50% of the fee
           })
         );
       }
     } else {
       // If no referrer, keep the fee in the bot's wallet or handle as needed
-      transaction.add(
-        SystemProgram.transfer({
-          fromPubkey: botKeypair.publicKey,
-          toPubkey: botKeypair.publicKey, // Essentially, no transfer
-          lamports: feeLamports / 2,
-        })
-      );
+      // Here, we simply retain it in the bot's wallet by not transferring
+      // Alternatively, you can transfer it to another address or accumulate it
     }
 
     // Schedule the transaction
-    schedule.scheduleJob(Date.now() + delayMinutes * 60 * 1000, async () => {
+    schedule.scheduleJob(new Date(Date.now() + delayMinutes * 60 * 1000), async () => {
       try {
         const signature = await connection.sendTransaction(transaction, [fromKeypair, botKeypair]);
         await connection.confirmTransaction(signature, 'confirmed');
