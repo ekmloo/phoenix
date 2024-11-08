@@ -15,19 +15,42 @@ const {
 } = require('@solana/web3.js');
 const mongoose = require('mongoose');
 
+// Load environment variables
+require('dotenv').config();
+
 // Environment Variables
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY; // Must be exactly 32 characters
 const MONGODB_URI = process.env.MONGODB_URI;
+const BOT_WALLET_PRIVATE_KEY = process.env.BOT_WALLET_PRIVATE_KEY; // JSON array as string
 
 // Validate Environment Variables
-if (!BOT_TOKEN || !ENCRYPTION_KEY || ENCRYPTION_KEY.length !== 32 || !MONGODB_URI) {
+if (
+  !BOT_TOKEN ||
+  !ENCRYPTION_KEY ||
+  ENCRYPTION_KEY.length !== 32 ||
+  !MONGODB_URI ||
+  !BOT_WALLET_PRIVATE_KEY
+) {
   console.error('[-] Missing or invalid environment variables.');
   process.exit(1);
 }
 
 // Initialize Telegraf Bot
 const bot = new Telegraf(BOT_TOKEN);
+
+// Initialize Solana Connection
+const connection = new Connection(clusterApiUrl('mainnet-beta'), 'confirmed');
+
+// Initialize Bot's Keypair
+let botKeypair;
+try {
+  const botSecretKey = Uint8Array.from(JSON.parse(BOT_WALLET_PRIVATE_KEY));
+  botKeypair = Keypair.fromSecretKey(botSecretKey);
+} catch (error) {
+  console.error('[-] Invalid BOT_WALLET_PRIVATE_KEY. It should be a JSON array of numbers.');
+  process.exit(1);
+}
 
 // Encryption Function with Random IV
 const encrypt = (text) => {
@@ -58,43 +81,134 @@ connectDB();
 
 // /start Command Handler
 bot.start(async (ctx) => {
+  const args = ctx.message.text.split(' ').slice(1);
+  const referralCode = args[0]; // Expected to be the referrer's telegramId
+
+  if (referralCode) {
+    // Check if referrer exists
+    const referrer = await User.findOne({ telegramId: parseInt(referralCode) });
+    if (referrer && referrer.telegramId !== ctx.from.id) {
+      // Inform the user to use /wallet with referral code
+      await ctx.reply(
+        `Welcome to Phoenix! 🔥\n\nUse /wallet ${referralCode} to create your Solana wallet and receive a referral bonus!`
+      );
+    } else {
+      await ctx.reply(
+        'Welcome to Phoenix! 🔥\n\nUse /wallet to create or view your Solana wallet.'
+      );
+    }
+  } else {
+    await ctx.reply(
+      'Welcome to Phoenix! 🔥\n\nUse /wallet to create or view your Solana wallet.'
+    );
+  }
+});
+
+// /referral Command Handler
+bot.command('referral', async (ctx) => {
+  const telegramId = ctx.from.id;
+  const referralLink = `https://t.me/phoenixbotsol?start=${telegramId}`;
+  await ctx.reply(`🔗 *Your referral link:*\n[Click here](${referralLink})`, { parse_mode: 'Markdown' });
+});
+
+// /about Command Handler
+bot.command('about', async (ctx) => {
   await ctx.reply(
-    'Welcome to Phoenix! 🔥 You can launch Solana tokens quickly.\n\nUse /wallet to create or view your Solana wallet.'
+    `🔥 *Phoenix Bot* 🔥\n\nPhoenix Bot allows you to create and manage your Solana wallets directly within Telegram. Invite friends using your referral link and earn a 50% commission on their fees!\n\nJoin our community: [t.me/phoenixbotsol](https://t.me/phoenixbotsol)`,
+    { parse_mode: 'Markdown' }
   );
 });
 
-// /wallet Command Handler
+// /wallet Command Handler with optional referral
 bot.command('wallet', async (ctx) => {
   const telegramId = ctx.from.id;
+  const args = ctx.message.text.split(' ').slice(1);
+  const referralCode = args[0]; // Assume referral code is the referrer's telegramId
 
   try {
     // Check if user already has a wallet
     let user = await User.findOne({ telegramId });
 
-    if (user) {
-      // User exists, return their public key
-      await ctx.replyWithMarkdown(`✅ *Your Solana wallet address:*\n\`${user.walletPublicKey}\``);
-    } else {
-      // Create a new Solana wallet using the utility function
-      const { publicKey, privateKey } = createWallet();
+    if (user && user.walletPublicKey) {
+      // User exists, return their public key and last 4 digits
+      await ctx.replyWithMarkdown(
+        `✅ *Your Solana wallet address:*\n\`${user.walletPublicKey}\`\n*Last 4 digits:* \`${user.last4}\``
+      );
+      return;
+    }
 
-      // Encrypt the private key
-      const encryptedPrivateKey = encrypt(JSON.stringify(privateKey));
-
-      // Save user to database
+    // If user exists but doesn't have a wallet yet, update referredBy if not set
+    if (user && !user.walletPublicKey) {
+      if (referralCode) {
+        const referrer = await User.findOne({ telegramId: parseInt(referralCode) });
+        if (referrer && referrer.telegramId !== telegramId) {
+          user.referredBy = referrer.telegramId;
+        }
+      }
+    } else if (!user) {
+      // Create a new user
       user = new User({
         telegramId,
-        walletPublicKey: publicKey,
-        walletPrivateKey: encryptedPrivateKey,
       });
 
-      await user.save();
-
-      // Send public key to the user
-      await ctx.replyWithMarkdown(
-        `🪙 *Your new Solana wallet has been created!*\n\n*Public Key:* \`${publicKey}\``
-      );
+      if (referralCode) {
+        const referrer = await User.findOne({ telegramId: parseInt(referralCode) });
+        if (referrer && referrer.telegramId !== telegramId) {
+          user.referredBy = referrer.telegramId;
+        }
+      }
     }
+
+    // Create a new Solana wallet
+    const { publicKey, privateKey } = createWallet();
+    const last4 = publicKey.slice(-4);
+
+    // Encrypt the private key
+    const encryptedPrivateKey = encrypt(JSON.stringify(privateKey));
+
+    // Update user with wallet info
+    user.walletPublicKey = publicKey;
+    user.walletPrivateKey = encryptedPrivateKey;
+    user.last4 = last4;
+
+    await user.save();
+
+    // Handle referral bonus if referredBy exists
+    if (user.referredBy) {
+      const referrer = await User.findOne({ telegramId: user.referredBy });
+      if (referrer) {
+        referrer.referrals += 1;
+        await referrer.save();
+
+        // Define bonus amount (e.g., 0.02 SOL)
+        const bonusSOL = 0.02;
+        const bonusLamports = bonusSOL * 1e9;
+
+        // Create transaction to send 50% of the fee to referrer
+        const transaction = new Transaction().add(
+          SystemProgram.transfer({
+            fromPubkey: botKeypair.publicKey,
+            toPubkey: new PublicKey(referrer.walletPublicKey),
+            lamports: bonusLamports / 2, // 50% of the fee
+          })
+        );
+
+        // Sign and send the transaction
+        const signature = await connection.sendTransaction(transaction, [botKeypair]);
+        await connection.confirmTransaction(signature, 'confirmed');
+
+        // Notify referrer
+        await bot.telegram.sendMessage(
+          referrer.telegramId,
+          `🎉 You received a referral bonus of ${bonusSOL / 2} SOL for inviting a new user!\n\n🔗 Transaction Signature:\n${signature}\n\nView on Solana Explorer: https://explorer.solana.com/tx/${signature}`
+        );
+      }
+    }
+
+    // Send public key and last 4 digits to the user
+    await ctx.replyWithMarkdown(
+      `🪙 *Your new Solana wallet has been created!*\n\n*Public Key:* \`${publicKey}\`\n*Last 4 digits:* \`${last4}\``
+    );
   } catch (error) {
     console.error('Error in /wallet command:', error);
     await ctx.reply('❌ An error occurred while processing your request. Please try again later.');
@@ -108,14 +222,11 @@ bot.command('balance', async (ctx) => {
   try {
     const user = await User.findOne({ telegramId });
 
-    if (!user) {
+    if (!user || !user.walletPublicKey) {
       return ctx.reply('❌ Wallet not found. Please create one using /wallet.');
     }
 
     const publicKey = new PublicKey(user.walletPublicKey);
-
-    // Create a connection to the Solana cluster
-    const connection = new Connection(clusterApiUrl('mainnet-beta'), 'confirmed');
 
     // Get balance in lamports
     const balanceLamports = await connection.getBalance(publicKey);
@@ -129,7 +240,7 @@ bot.command('balance', async (ctx) => {
   }
 });
 
-// /send Command Handler
+// /send Command Handler with fee and referral
 bot.command('send', async (ctx) => {
   const telegramId = ctx.from.id;
   const args = ctx.message.text.split(' ').slice(1);
@@ -148,35 +259,69 @@ bot.command('send', async (ctx) => {
   try {
     const user = await User.findOne({ telegramId });
 
-    if (!user) {
+    if (!user || !user.walletPublicKey) {
       return ctx.reply('❌ Wallet not found. Please create one using /wallet.');
     }
+
+    // Define fee amount (e.g., 0.02 SOL)
+    const feeSOL = 0.02;
+    const feeLamports = feeSOL * 1e9;
 
     // Decrypt the private key
     const decryptedPrivateKey = decrypt(user.walletPrivateKey);
     const privateKeyArray = JSON.parse(decryptedPrivateKey);
     const fromKeypair = Keypair.fromSecretKey(Uint8Array.from(privateKeyArray));
 
-    const connection = new Connection(clusterApiUrl('mainnet-beta'), 'confirmed');
+    // Check if the bot has enough balance to cover the fee
+    const botBalance = await connection.getBalance(botKeypair.publicKey);
+    if (botBalance < feeLamports) {
+      return ctx.reply('❌ The bot does not have enough SOL to cover the transaction fee.');
+    }
 
-    const recipientPublicKey = new PublicKey(recipientAddress);
-
+    // Create transaction
     const transaction = new Transaction().add(
       SystemProgram.transfer({
         fromPubkey: fromKeypair.publicKey,
-        toPubkey: recipientPublicKey,
+        toPubkey: new PublicKey(recipientAddress),
         lamports: amountSOL * 1e9, // Convert SOL to lamports
       })
     );
 
-    const signature = await connection.sendTransaction(transaction, [fromKeypair]);
+    // Add fee transfer to referrer if applicable
+    if (user.referredBy) {
+      const referrer = await User.findOne({ telegramId: user.referredBy });
+      if (referrer && referrer.walletPublicKey) {
+        transaction.add(
+          SystemProgram.transfer({
+            fromPubkey: botKeypair.publicKey,
+            toPubkey: new PublicKey(referrer.walletPublicKey),
+            lamports: feeLamports / 2, // 50% of the fee
+          })
+        );
+      }
+    } else {
+      // If no referrer, keep the fee in the bot's wallet or handle as needed
+      transaction.add(
+        SystemProgram.transfer({
+          fromPubkey: botKeypair.publicKey,
+          toPubkey: botKeypair.publicKey, // Essentially, no transfer
+          lamports: feeLamports / 2,
+        })
+      );
+    }
+
+    // Sign and send the transaction
+    const signature = await connection.sendTransaction(transaction, [fromKeypair, botKeypair]);
+    await connection.confirmTransaction(signature, 'confirmed');
 
     await ctx.reply(
       `✅ Transaction sent!\n\n🔗 Transaction Signature:\n${signature}\n\nYou can view the transaction on Solana Explorer: https://explorer.solana.com/tx/${signature}`
     );
   } catch (error) {
     console.error('Error in /send command:', error);
-    await ctx.reply('❌ An error occurred while sending the transaction. Please try again later.');
+    await ctx.reply(
+      '❌ An error occurred while sending the transaction. Please check the recipient address and your balance.'
+    );
   }
 });
 
@@ -185,12 +330,16 @@ bot.command('help', async (ctx) => {
   const helpMessage = `
 Available commands:
 /start - Start the bot
-/wallet - Create or view your Solana wallet
+/referral - Get your referral link
+/about - About the bot
+/wallet [referral_code] - Create or view your Solana wallet. Optionally include a referral code.
 /balance - Check your wallet balance
 /send <address> <amount> - Send SOL to another address
 /help - Show this help message
-`;
-  await ctx.reply(helpMessage);
+
+Join our community: [t.me/phoenixbotsol](https://t.me/phoenixbotsol)
+  `;
+  await ctx.reply(helpMessage, { parse_mode: 'Markdown' });
 });
 
 // Export the webhook handler for Vercel
