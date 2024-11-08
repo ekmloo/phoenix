@@ -17,7 +17,7 @@ const mongoose = require('mongoose');
 const schedule = require('node-schedule');
 
 // Load environment variables
-require('dotenv').config();
+// No need for dotenv in production on Vercel
 
 // Environment Variables
 const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -105,7 +105,7 @@ bot.start(async (ctx) => {
 // /referral Command Handler
 bot.command('referral', async (ctx) => {
   const telegramId = ctx.from.id;
-  const referralLink = `https://t.me/phoenixbotsol?start=${telegramId}`;
+  const referralLink = `https://t.me/phoenixlaunchbot?start=${telegramId}`;
   await ctx.replyWithMarkdown(`🔗 *Your referral link:*\n[Click here](${referralLink})`);
 });
 
@@ -126,6 +126,7 @@ bot.command('help', async (ctx) => {
 /wallet [referral_code] - Create or view your Solana wallet. Optionally include a referral code.
 /balance - Check your wallet balance
 /send <address> <amount> - Send SOL to another address
+/schedule <address> <amount> <delay_in_minutes> - Schedule a transaction to send SOL after a delay
 /help - Show this help message
 
 Join our community: [t.me/phoenixbotsol](https://t.me/phoenixbotsol)
@@ -144,9 +145,9 @@ bot.command('wallet', async (ctx) => {
     let user = await User.findOne({ telegramId });
 
     if (user && user.walletPublicKey) {
-      // User exists, return their public key and last 4 digits
+      // User exists, return their public key
       await ctx.replyWithMarkdown(
-        `✅ *Your Solana wallet address:*\n\`${user.walletPublicKey}\`\n*Last 4 digits:* \`${user.last4}\``
+        `✅ *Your Solana wallet address:*\n\`${user.walletPublicKey}\``
       );
       return;
     }
@@ -175,7 +176,6 @@ bot.command('wallet', async (ctx) => {
 
     // Create a new Solana wallet
     const { publicKey, privateKey } = createWallet();
-    const last4 = publicKey.slice(-4);
 
     // Encrypt the private key
     const encryptedPrivateKey = encrypt(JSON.stringify(privateKey));
@@ -183,7 +183,6 @@ bot.command('wallet', async (ctx) => {
     // Update user with wallet info
     user.walletPublicKey = publicKey;
     user.walletPrivateKey = encryptedPrivateKey;
-    user.last4 = last4;
 
     await user.save();
 
@@ -225,9 +224,9 @@ bot.command('wallet', async (ctx) => {
       }
     }
 
-    // Send public key and last 4 digits to the user
+    // Send public key to the user
     await ctx.replyWithMarkdown(
-      `🪙 *Your new Solana wallet has been created!*\n\n*Public Key:* \`${publicKey}\`\n*Last 4 digits:* \`${last4}\``
+      `🪙 *Your new Solana wallet has been created!*\n\n*Public Key:* \`${publicKey}\``
     );
   } catch (error) {
     console.error('Error in /wallet command:', error);
@@ -260,7 +259,7 @@ bot.command('balance', async (ctx) => {
   }
 });
 
-// /send Command Handler with fee and referral
+// /send Command Handler with 0.1% fee and referral
 bot.command('send', async (ctx) => {
   const telegramId = ctx.from.id;
   const args = ctx.message.text.split(' ').slice(1);
@@ -346,20 +345,38 @@ bot.command('send', async (ctx) => {
   }
 });
 
-// Scheduled Transaction Function
-const scheduleTransaction = async (telegramId, recipientAddress, amountSOL, delayMinutes) => {
-  // Define fee amount (0.9%)
-  const feePercentage = 0.9;
-  const feeSOL = (amountSOL * feePercentage) / 100;
-  const feeLamports = feeSOL * 1e9;
+// /schedule Command Handler with 0.9% fee
+bot.command('schedule', async (ctx) => {
+  const telegramId = ctx.from.id;
+  const args = ctx.message.text.split(' ').slice(1);
+
+  if (args.length < 3) {
+    return ctx.reply('Usage: /schedule <recipient_address> <amount_in_SOL> <delay_in_minutes>');
+  }
+
+  const recipientAddress = args[0];
+  const amountSOL = parseFloat(args[1]);
+  const delayMinutes = parseInt(args[2]);
+
+  if (isNaN(amountSOL) || amountSOL <= 0) {
+    return ctx.reply('Please enter a valid amount of SOL.');
+  }
+
+  if (isNaN(delayMinutes) || delayMinutes <= 0) {
+    return ctx.reply('Please enter a valid delay time in minutes.');
+  }
 
   try {
     const user = await User.findOne({ telegramId });
 
     if (!user || !user.walletPublicKey) {
-      console.log('Wallet not found for user:', telegramId);
-      return;
+      return ctx.reply('❌ Wallet not found. Please create one using /wallet.');
     }
+
+    // Define fee amount (0.9%)
+    const feePercentage = 0.9;
+    const feeSOL = (amountSOL * feePercentage) / 100;
+    const feeLamports = feeSOL * 1e9;
 
     // Decrypt the private key
     const decryptedPrivateKey = decrypt(user.walletPrivateKey);
@@ -369,8 +386,7 @@ const scheduleTransaction = async (telegramId, recipientAddress, amountSOL, dela
     // Check if the bot has enough balance to cover the fee
     const botBalance = await connection.getBalance(botKeypair.publicKey);
     if (botBalance < feeLamports) {
-      console.log('Bot does not have enough SOL to cover the scheduled transaction fee.');
-      return;
+      return ctx.reply('❌ The bot does not have enough SOL to cover the transaction fee.');
     }
 
     // Create transaction
@@ -422,38 +438,9 @@ const scheduleTransaction = async (telegramId, recipientAddress, amountSOL, dela
     });
 
     // Notify user about the scheduled transaction
-    await bot.telegram.sendMessage(
-      telegramId,
+    await ctx.replyWithMarkdown(
       `🕒 Your transaction of ${amountSOL} SOL to ${recipientAddress} has been scheduled and will execute in ${delayMinutes} minutes.\n\n🔗 Once executed, you will receive a confirmation message with the transaction signature.`
     );
-  } catch (error) {
-    console.error('Error scheduling transaction:', error);
-  }
-};
-
-// /schedule Command Handler
-bot.command('schedule', async (ctx) => {
-  const telegramId = ctx.from.id;
-  const args = ctx.message.text.split(' ').slice(1);
-
-  if (args.length < 3) {
-    return ctx.reply('Usage: /schedule <recipient_address> <amount_in_SOL> <delay_in_minutes>');
-  }
-
-  const recipientAddress = args[0];
-  const amountSOL = parseFloat(args[1]);
-  const delayMinutes = parseInt(args[2]);
-
-  if (isNaN(amountSOL) || amountSOL <= 0) {
-    return ctx.reply('Please enter a valid amount of SOL.');
-  }
-
-  if (isNaN(delayMinutes) || delayMinutes <= 0) {
-    return ctx.reply('Please enter a valid delay time in minutes.');
-  }
-
-  try {
-    await scheduleTransaction(telegramId, recipientAddress, amountSOL, delayMinutes);
   } catch (error) {
     console.error('Error in /schedule command:', error);
     await ctx.reply('❌ An error occurred while scheduling your transaction. Please try again later.');
