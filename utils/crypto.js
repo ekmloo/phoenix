@@ -3,6 +3,11 @@ const crypto = require('crypto');
 
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY; // Must be exactly 32 characters
 
+if (!ENCRYPTION_KEY || ENCRYPTION_KEY.length !== 32) {
+  console.error('[-] ENCRYPTION_KEY must be exactly 32 characters long.');
+  process.exit(1);
+}
+
 // Encryption Function with Random IV
 const encrypt = (text) => {
   const iv = crypto.randomBytes(16); // Random IV for each encryption
