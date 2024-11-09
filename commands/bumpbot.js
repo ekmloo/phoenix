@@ -98,7 +98,7 @@ module.exports = (bot) => {
 
         // Schedule the bumpbot operations (micro buys and sells)
         const jobName = `bumpbot_${telegramId}_${contractAddress}`;
-        const job = scheduleJob.scheduleJob(jobName, '* * * * *', async () => {
+        scheduleJob.scheduleJob(jobName, '* * * * *', async () => {
           try {
             const currentUser = await User.findOne({ telegramId });
 
