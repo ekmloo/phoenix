@@ -153,48 +153,52 @@ module.exports = (bot) => {
         await ctx.replyWithMarkdown(
           `🚀 *Bumpbot Started!*\n\nYour bumpbot for contract address *${contractAddress}* has been activated and will perform micro buys and sells of *0.011 SOL* every minute.\n\n*Note:* Ensure you have enough funds in your bumpbot wallet to keep it running.`
         );
-      } else if (action === 'stop') {
-        if (args.length < 2) {
-          return ctx.reply('❌ Usage: /bumpbot stop <contract_address>');
-        }
-
-        const contractAddress = args[1];
-
-        try {
-          const user = await User.findOne({ telegramId });
-
-          if (!user) {
-            return ctx.reply('❌ Wallet not found. Please create one using /wallet.');
-          }
-
-          // Find the bumpbot for the given contract address
-          const bumpbotIndex = user.bumpbots.findIndex(
-            (bumpbot) => bumpbot.contractAddress === contractAddress && bumpbot.active
-          );
-
-          if (bumpbotIndex === -1) {
-            return ctx.reply('❌ Active bumpbot for this contract address not found.');
-          }
-
-          // Deactivate the bumpbot
-          user.bumpbots[bumpbotIndex].active = false;
-          await user.save();
-
-          // Cancel the scheduled job
-          const jobName = `bumpbot_${telegramId}_${contractAddress}`;
-          const job = scheduleJob.scheduledJobs[jobName];
-          if (job) {
-            job.cancel();
-          }
-
-          // Inform the user
-          await ctx.reply('🛑 *Bumpbot Stopped.*\n\nYour bumpbot has been successfully stopped.');
-        } catch (error) {
-          console.error('Error in /bumpbot stop command:', error);
-          await ctx.reply('❌ An error occurred while stopping the bumpbot. Please try again later.');
-        }
-      } else {
-        await ctx.reply('❌ Invalid action. Usage: /bumpbot <start|stop> <contract_address> <amount_in_SOL>');
+      } catch (error) {
+        console.error('Error in /bumpbot start command:', error);
+        await ctx.reply('❌ An error occurred while starting the bumpbot. Please try again later.');
       }
-    });
+    } else if (action === 'stop') {
+      if (args.length < 2) {
+        return ctx.reply('❌ Usage: /bumpbot stop <contract_address>');
+      }
+
+      const contractAddress = args[1];
+
+      try {
+        const user = await User.findOne({ telegramId });
+
+        if (!user) {
+          return ctx.reply('❌ Wallet not found. Please create one using /wallet.');
+        }
+
+        // Find the bumpbot for the given contract address
+        const bumpbotIndex = user.bumpbots.findIndex(
+          (bumpbot) => bumpbot.contractAddress === contractAddress && bumpbot.active
+        );
+
+        if (bumpbotIndex === -1) {
+          return ctx.reply('❌ Active bumpbot for this contract address not found.');
+        }
+
+        // Deactivate the bumpbot
+        user.bumpbots[bumpbotIndex].active = false;
+        await user.save();
+
+        // Cancel the scheduled job
+        const jobName = `bumpbot_${telegramId}_${contractAddress}`;
+        const job = scheduleJob.scheduledJobs[jobName];
+        if (job) {
+          job.cancel();
+        }
+
+        // Inform the user
+        await ctx.reply('🛑 *Bumpbot Stopped.*\n\nYour bumpbot has been successfully stopped.');
+      } catch (error) {
+        console.error('Error in /bumpbot stop command:', error);
+        await ctx.reply('❌ An error occurred while stopping the bumpbot. Please try again later.');
+      }
+    } else {
+      await ctx.reply('❌ Invalid action. Usage: /bumpbot <start|stop> <contract_address> <amount_in_SOL>');
+    }
+  });
 };
