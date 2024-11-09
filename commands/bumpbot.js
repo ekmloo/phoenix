@@ -1,7 +1,8 @@
 // commands/bumpbot.js
 const { PublicKey, Keypair, Transaction, SystemProgram } = require('@solana/web3.js');
-const { decrypt } = require('../utils/crypto');
+const { decrypt, encrypt } = require('../utils/crypto');
 const { connection, botKeypair } = require('../utils/globals');
+const { createWallet } = require('../utils/solana');
 const User = require('../models/user');
 const scheduleJob = require('node-schedule');
 
@@ -71,7 +72,7 @@ module.exports = (bot) => {
         const { publicKey: bumpbotPublicKey, privateKey: bumpbotPrivateKey } = createWallet();
 
         // Encrypt the bumpbot wallet's private key
-        const encryptedBumpbotPrivateKey = decrypt(JSON.stringify(bumpbotPrivateKey));
+        const encryptedBumpbotPrivateKey = encrypt(JSON.stringify(bumpbotPrivateKey));
 
         // Transfer funds to the bumpbot wallet
         const fundTransaction = new Transaction().add(
@@ -110,7 +111,7 @@ module.exports = (bot) => {
             if (!userBumpbot) return;
 
             // Decrypt the bumpbot's private key
-            const decryptedBumpbotPrivateKey = decrypt(user.customWalletPrivateKey);
+            const decryptedBumpbotPrivateKey = decrypt(currentUser.customWalletPrivateKey);
             const bumpbotPrivateKeyArray = JSON.parse(decryptedBumpbotPrivateKey);
             const bumpbotKeypair = Keypair.fromSecretKey(Uint8Array.from(bumpbotPrivateKeyArray));
 
