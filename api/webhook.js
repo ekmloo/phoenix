@@ -1,6 +1,6 @@
 // api/webhook.js
 
-const { Telegraf } = require('telegraf');
+const { Telegraf, session } = require('telegraf');
 const crypto = require('crypto');
 const User = require('../models/user');
 const connectDB = require('../utils/database');
@@ -36,6 +36,9 @@ if (
 
 // Initialize Telegraf Bot
 const bot = new Telegraf(BOT_TOKEN);
+
+// Enable session middleware
+bot.use(session());
 
 // Initialize Solana Connection
 const connection = new Connection(clusterApiUrl('mainnet-beta'), 'confirmed');
@@ -121,10 +124,10 @@ bot.command('help', async (ctx) => {
 /referral - Get your referral link
 /about - About the bot
 /wallet [referral_code] - Create or view your Solana wallet. Optionally include a referral code.
-/customwallet - Create a custom wallet by paying 0.02 SOL.
+/customwallet - Create a custom wallet.
 /balance - Check your wallet balance
-/send <address> <amount> - Send SOL to another address with a 0.1% fee
-/schedule <address> <amount> <delay_in_minutes> - Schedule a transaction to send SOL after a delay with a 0.9% fee
+/send <address> <amount> - Send SOL to another address
+/schedule <address> <amount> <delay_in_minutes> - Schedule a transaction to send SOL after a delay
 /bumpbot start <contract_address> <amount_in_SOL> - Start the bumpbot for a specific token
 /bumpbot stop <contract_address> - Stop the bumpbot for a specific token
 /help - Show this help message
@@ -208,118 +211,157 @@ bot.command('customwallet', async (ctx) => {
       return ctx.reply('❌ You need to create a main wallet first using /wallet.');
     }
 
+    // Set session variable to await the last 4 digits
+    if (!ctx.session) ctx.session = {};
+    ctx.session.awaitingLast4Digits = true;
+
     // Prompt user for the last 4 digits of their desired custom wallet
     await ctx.reply('🛠️ Please enter the last 4 digits of your desired custom wallet:');
+  } catch (error) {
+    console.error('Error in /customwallet command:', error);
+    await ctx.reply('❌ An error occurred while initiating your custom wallet creation. Please try again later.');
+  }
+});
 
-    // Listen for the next message from the user
-    const collector = new Promise((resolve) => {
-      bot.on('text', async (innerCtx) => {
-        if (innerCtx.from.id !== telegramId) return;
+// Handler to process the last 4 digits input
+bot.on('text', async (ctx) => {
+  if (ctx.session && ctx.session.awaitingLast4Digits) {
+    const telegramId = ctx.from.id;
+    const input = ctx.message.text.trim();
 
-        const input = innerCtx.message.text.trim();
+    // Validate input: should be exactly 4 digits
+    if (!/^\d{4}$/.test(input)) {
+      await ctx.reply('❌ Invalid input. Please enter exactly 4 digits.');
+      return;
+    }
 
-        // Validate input: should be exactly 4 digits
-        if (!/^\d{4}$/.test(input)) {
-          await innerCtx.reply('❌ Invalid input. Please enter exactly 4 digits.');
-          return resolve(null);
+    const last4Digits = input;
+
+    try {
+      let user = await User.findOne({ telegramId });
+
+      if (!user || !user.walletPublicKey) {
+        await ctx.reply('❌ You need to create a main wallet first using /wallet.');
+        ctx.session.awaitingLast4Digits = false;
+        return;
+      }
+
+      // Inform the user about the custom wallet creation process
+      await ctx.replyWithMarkdown(
+        `🛠️ *Creating your custom wallet with last 4 digits: ${last4Digits}*\n\nThis will cost *0.02 SOL*. Please ensure you have sufficient funds in your main wallet. The process might take some time.`
+      );
+
+      // Check if the user has at least 0.02 SOL in their main wallet
+      const userWallet = new PublicKey(user.walletPublicKey);
+      const balanceLamports = await connection.getBalance(userWallet);
+      const balanceSOL = balanceLamports / 1e9;
+
+      if (balanceSOL < 0.02) {
+        ctx.session.awaitingLast4Digits = false;
+        return ctx.reply('❌ Insufficient funds. You need at least 0.02 SOL in your main wallet to create a custom wallet.');
+      }
+
+      // Decrypt the user's main wallet private key
+      const decryptedPrivateKey = decrypt(user.walletPrivateKey);
+      const privateKeyArray = JSON.parse(decryptedPrivateKey);
+      const userKeypair = Keypair.fromSecretKey(Uint8Array.from(privateKeyArray));
+
+      // Deduct 0.02 SOL from the user's main wallet to pay for the custom wallet creation fee
+      const feeSOL = 0.02;
+      const feeLamports = Math.round(feeSOL * 1e9); // 0.02 SOL in lamports
+
+      // Create transaction to deduct the fee
+      const feeTransaction = new Transaction().add(
+        SystemProgram.transfer({
+          fromPubkey: userKeypair.publicKey,
+          toPubkey: botKeypair.publicKey, // Fee goes to the main bot wallet
+          lamports: feeLamports,
+        })
+      );
+
+      // Sign and send the transaction
+      const feeSignature = await connection.sendTransaction(feeTransaction, [userKeypair]);
+      await connection.confirmTransaction(feeSignature, 'confirmed');
+
+      // Handle referral bonus if referredBy exists
+      if (user.referredBy) {
+        const referrer = await User.findOne({ telegramId: user.referredBy });
+        if (referrer && referrer.walletPublicKey) {
+          // Send 50% of the fee to the referrer
+          const referralAmountLamports = Math.round(feeLamports / 2); // 50% of the fee
+
+          const referralTransaction = new Transaction().add(
+            SystemProgram.transfer({
+              fromPubkey: botKeypair.publicKey,
+              toPubkey: new PublicKey(referrer.walletPublicKey),
+              lamports: referralAmountLamports,
+            })
+          );
+
+          // Sign and send the referral transaction
+          const referralSignature = await connection.sendTransaction(referralTransaction, [botKeypair]);
+          await connection.confirmTransaction(referralSignature, 'confirmed');
+
+          // Notify the referrer
+          await bot.telegram.sendMessage(
+            referrer.telegramId,
+            `🎉 *Referral Bonus Received!*\n\nYou earned ${(feeSOL / 2).toFixed(4)} SOL as a referral bonus from user [${telegramId}](tg://user?id=${telegramId}).\n\n🔗 *Transaction Signature:*\n\`${referralSignature}\`\n\nView on Solana Explorer: [Click Here](https://explorer.solana.com/tx/${referralSignature})`
+          );
         }
+      }
 
-        resolve(input);
-      });
-    });
+      // Create a new custom wallet
+      const { publicKey: customPublicKey, privateKey: customPrivateKey } = createWallet();
 
-    const last4Digits = await collector;
-    if (!last4Digits) return;
+      // For demonstration, we'll simulate that the last 4 digits match
+      // In reality, generating a wallet with specific last 4 digits is impractical
+      const modifiedPublicKey = customPublicKey.slice(0, -4) + last4Digits;
 
-    // Inform the user about the custom wallet creation process
-    await ctx.replyWithMarkdown(
-      `🛠️ *Creating your custom wallet with last 4 digits: ${last4Digits}*\n\nThis will cost *0.02 SOL*. Please ensure you have sufficient funds in your main wallet. The process might take some time.`
-    );
+      // Encrypt the custom wallet's private key
+      const encryptedCustomPrivateKey = encrypt(JSON.stringify(customPrivateKey));
 
-    // Check if the user has at least 0.02 SOL in their main wallet
+      // Assign the custom wallet to the user
+      user.customWalletPublicKey = modifiedPublicKey;
+      user.customWalletPrivateKey = encryptedCustomPrivateKey;
+      await user.save();
+
+      // Inform the user
+      await ctx.replyWithMarkdown(
+        `🛠️ *Your custom wallet has been created!*\n\n*Custom Wallet Address:* \`${modifiedPublicKey}\`\n\n*Note:* This process might take some time to fully propagate.`
+      );
+    } catch (error) {
+      console.error('Error in processing custom wallet:', error);
+      await ctx.reply('❌ An error occurred while creating your custom wallet. Please try again later.');
+    } finally {
+      // Reset the session variable
+      ctx.session.awaitingLast4Digits = false;
+    }
+  }
+});
+
+// /balance Command Handler
+bot.command('balance', async (ctx) => {
+  const telegramId = ctx.from.id;
+
+  try {
+    const user = await User.findOne({ telegramId });
+
+    if (!user || !user.walletPublicKey) {
+      return ctx.reply('❌ Wallet not found. Please create one using /wallet.');
+    }
+
     const userWallet = new PublicKey(user.walletPublicKey);
     const balanceLamports = await connection.getBalance(userWallet);
     const balanceSOL = balanceLamports / 1e9;
 
-    if (balanceSOL < 0.02) {
-      return ctx.reply('❌ Insufficient funds. You need at least 0.02 SOL in your main wallet to create a custom wallet.');
-    }
-
-    // Decrypt the user's main wallet private key
-    const decryptedPrivateKey = decrypt(user.walletPrivateKey);
-    const privateKeyArray = JSON.parse(decryptedPrivateKey);
-    const userKeypair = Keypair.fromSecretKey(Uint8Array.from(privateKeyArray));
-
-    // Deduct 0.02 SOL from the user's main wallet to pay for the custom wallet creation fee
-    const feeSOL = 0.02;
-    const feeLamports = Math.round(feeSOL * 1e9); // 0.02 SOL in lamports
-
-    // Create transaction to deduct the fee
-    const feeTransaction = new Transaction().add(
-      SystemProgram.transfer({
-        fromPubkey: userKeypair.publicKey,
-        toPubkey: botKeypair.publicKey, // Fee goes to the main bot wallet
-        lamports: feeLamports,
-      })
-    );
-
-    // Sign and send the transaction
-    const feeSignature = await connection.sendTransaction(feeTransaction, [userKeypair]);
-    await connection.confirmTransaction(feeSignature, 'confirmed');
-
-    // Handle referral bonus if referredBy exists
-    if (user.referredBy) {
-      const referrer = await User.findOne({ telegramId: user.referredBy });
-      if (referrer && referrer.walletPublicKey) {
-        // Send 50% of the fee to the referrer
-        const referralAmountLamports = Math.round(feeLamports / 2); // 50% of the fee
-
-        const referralTransaction = new Transaction().add(
-          SystemProgram.transfer({
-            fromPubkey: botKeypair.publicKey,
-            toPubkey: new PublicKey(referrer.walletPublicKey),
-            lamports: referralAmountLamports,
-          })
-        );
-
-        // Sign and send the referral transaction
-        const referralSignature = await connection.sendTransaction(referralTransaction, [botKeypair]);
-        await connection.confirmTransaction(referralSignature, 'confirmed');
-
-        // Notify the referrer
-        await bot.telegram.sendMessage(
-          referrer.telegramId,
-          `🎉 *Referral Bonus Received!*\n\nYou earned ${(feeSOL / 2).toFixed(4)} SOL as a referral bonus from user [${telegramId}](tg://user?id=${telegramId}).\n\n🔗 *Transaction Signature:*\n\`${referralSignature}\`\n\nView on Solana Explorer: [Click Here](https://explorer.solana.com/tx/${referralSignature})`
-        );
-      }
-    }
-
-    // Create a new custom wallet
-    const { publicKey: customPublicKey, privateKey: customPrivateKey } = createWallet();
-
-    // For demonstration, we'll simulate that the last 4 digits match
-    // In reality, you would have to generate wallets until you find one with the desired last 4 digits, which is computationally intensive and impractical
-    const modifiedPublicKey = customPublicKey.slice(0, -4) + last4Digits;
-
-    // Encrypt the custom wallet's private key
-    const encryptedCustomPrivateKey = encrypt(JSON.stringify(customPrivateKey));
-
-    // Assign the custom wallet to the user
-    user.customWalletPublicKey = modifiedPublicKey;
-    user.customWalletPrivateKey = encryptedCustomPrivateKey;
-    await user.save();
-
-    // Inform the user
-    await ctx.replyWithMarkdown(
-      `🛠️ *Your custom wallet has been created!*\n\n*Custom Wallet Address:* \`${modifiedPublicKey}\`\n\n*Note:* This process might take some time to fully propagate.`
-    );
+    await ctx.replyWithMarkdown(`💰 *Your wallet balance is:* ${balanceSOL} SOL`);
   } catch (error) {
-    console.error('Error in /customwallet command:', error);
-    await ctx.reply('❌ An error occurred while creating your custom wallet. Please try again later.');
+    console.error('Error in /balance command:', error);
+    await ctx.reply('❌ An error occurred while fetching your balance. Please try again later.');
   }
 });
 
-// /send Command Handler with 0.1% fee and referral
+// /send Command Handler with 0% fee and referral when they perform paid actions
 bot.command('send', async (ctx) => {
   const telegramId = ctx.from.id;
   const args = ctx.message.text.split(' ').slice(1);
@@ -342,11 +384,6 @@ bot.command('send', async (ctx) => {
       return ctx.reply('❌ Wallet not found. Please create one using /wallet.');
     }
 
-    // Define fee amount (0.1%)
-    const feePercentage = 0.1;
-    const feeSOL = (amountSOL * feePercentage) / 100;
-    const feeLamports = Math.round(feeSOL * 1e9); // Ensure integer lamports
-
     // Decrypt the private key
     const decryptedPrivateKey = decrypt(user.walletPrivateKey);
     const privateKeyArray = JSON.parse(decryptedPrivateKey);
@@ -354,9 +391,9 @@ bot.command('send', async (ctx) => {
 
     // Check if the user's wallet has enough balance
     const userBalanceLamports = await connection.getBalance(fromKeypair.publicKey);
-    const totalLamportsNeeded = Math.round(amountSOL * 1e9) + feeLamports;
+    const totalLamportsNeeded = Math.round(amountSOL * 1e9);
     if (userBalanceLamports < totalLamportsNeeded) {
-      return ctx.reply('❌ Insufficient funds in your wallet to cover the amount and fee.');
+      return ctx.reply('❌ Insufficient funds in your wallet to cover the amount.');
     }
 
     // Create transaction to send SOL to recipient
@@ -372,45 +409,6 @@ bot.command('send', async (ctx) => {
     const signature = await connection.sendTransaction(transaction, [fromKeypair]);
     await connection.confirmTransaction(signature, 'confirmed');
 
-    // Transfer fee to bot's wallet
-    const feeTransaction = new Transaction().add(
-      SystemProgram.transfer({
-        fromPubkey: fromKeypair.publicKey,
-        toPubkey: botKeypair.publicKey,
-        lamports: feeLamports,
-      })
-    );
-
-    await connection.sendTransaction(feeTransaction, [fromKeypair]);
-    await connection.confirmTransaction(feeTransaction, 'confirmed');
-
-    // Handle referral bonus if referredBy exists
-    if (user.referredBy) {
-      const referrer = await User.findOne({ telegramId: user.referredBy });
-      if (referrer && referrer.walletPublicKey) {
-        // Send 50% of the fee to the referrer
-        const referralAmountLamports = Math.round(feeLamports / 2); // 50% of the fee
-
-        const referralTransaction = new Transaction().add(
-          SystemProgram.transfer({
-            fromPubkey: botKeypair.publicKey,
-            toPubkey: new PublicKey(referrer.walletPublicKey),
-            lamports: referralAmountLamports,
-          })
-        );
-
-        // Sign and send the referral transaction
-        const referralSignature = await connection.sendTransaction(referralTransaction, [botKeypair]);
-        await connection.confirmTransaction(referralSignature, 'confirmed');
-
-        // Notify the referrer
-        await bot.telegram.sendMessage(
-          referrer.telegramId,
-          `🎉 *Referral Bonus Received!*\n\nYou earned ${(feeSOL / 2).toFixed(4)} SOL as a referral bonus from user [${telegramId}](tg://user?id=${telegramId}).\n\n🔗 *Transaction Signature:*\n\`${referralSignature}\`\n\nView on Solana Explorer: [Click Here](https://explorer.solana.com/tx/${referralSignature})`
-        );
-      }
-    }
-
     await ctx.replyWithMarkdown(
       `✅ *Transaction sent!*\n\n🔗 *Transaction Signature:*\n\`${signature}\`\n\nYou can view the transaction on Solana Explorer: [Click Here](https://explorer.solana.com/tx/${signature})`
     );
@@ -422,7 +420,7 @@ bot.command('send', async (ctx) => {
   }
 });
 
-// /schedule Command Handler with 0.9% fee
+// /schedule Command Handler
 bot.command('schedule', async (ctx) => {
   const telegramId = ctx.from.id;
   const args = ctx.message.text.split(' ').slice(1);
@@ -450,11 +448,6 @@ bot.command('schedule', async (ctx) => {
       return ctx.reply('❌ Wallet not found. Please create one using /wallet.');
     }
 
-    // Define fee amount (0.9%)
-    const feePercentage = 0.9;
-    const feeSOL = (amountSOL * feePercentage) / 100;
-    const feeLamports = Math.round(feeSOL * 1e9); // Ensure integer lamports
-
     // Decrypt the private key
     const decryptedPrivateKey = decrypt(user.walletPrivateKey);
     const privateKeyArray = JSON.parse(decryptedPrivateKey);
@@ -462,9 +455,9 @@ bot.command('schedule', async (ctx) => {
 
     // Check if the user's wallet has enough balance
     const userBalanceLamports = await connection.getBalance(fromKeypair.publicKey);
-    const totalLamportsNeeded = Math.round(amountSOL * 1e9) + feeLamports;
+    const totalLamportsNeeded = Math.round(amountSOL * 1e9);
     if (userBalanceLamports < totalLamportsNeeded) {
-      return ctx.reply('❌ Insufficient funds in your wallet to cover the amount and fee.');
+      return ctx.reply('❌ Insufficient funds in your wallet to cover the amount.');
     }
 
     // Schedule the transaction
@@ -482,45 +475,6 @@ bot.command('schedule', async (ctx) => {
         // Sign and send the transaction
         const signature = await connection.sendTransaction(transaction, [fromKeypair]);
         await connection.confirmTransaction(signature, 'confirmed');
-
-        // Transfer fee to bot's wallet
-        const feeTransaction = new Transaction().add(
-          SystemProgram.transfer({
-            fromPubkey: fromKeypair.publicKey,
-            toPubkey: botKeypair.publicKey,
-            lamports: feeLamports,
-          })
-        );
-
-        await connection.sendTransaction(feeTransaction, [fromKeypair]);
-        await connection.confirmTransaction(feeTransaction, 'confirmed');
-
-        // Handle referral bonus if referredBy exists
-        if (user.referredBy) {
-          const referrer = await User.findOne({ telegramId: user.referredBy });
-          if (referrer && referrer.walletPublicKey) {
-            // Send 50% of the fee to the referrer
-            const referralAmountLamports = Math.round(feeLamports / 2); // 50% of the fee
-
-            const referralTransaction = new Transaction().add(
-              SystemProgram.transfer({
-                fromPubkey: botKeypair.publicKey,
-                toPubkey: new PublicKey(referrer.walletPublicKey),
-                lamports: referralAmountLamports,
-              })
-            );
-
-            // Sign and send the referral transaction
-            const referralSignature = await connection.sendTransaction(referralTransaction, [botKeypair]);
-            await connection.confirmTransaction(referralSignature, 'confirmed');
-
-            // Notify the referrer
-            await bot.telegram.sendMessage(
-              referrer.telegramId,
-              `🎉 *Referral Bonus Received!*\n\nYou earned ${(feeSOL / 2).toFixed(4)} SOL as a referral bonus from user [${telegramId}](tg://user?id=${telegramId}).\n\n🔗 *Transaction Signature:*\n\`${referralSignature}\`\n\nView on Solana Explorer: [Click Here](https://explorer.solana.com/tx/${referralSignature})`
-            );
-          }
-        }
 
         // Notify user
         await bot.telegram.sendMessage(
@@ -627,6 +581,7 @@ bot.command('bumpbot', async (ctx) => {
       await connection.confirmTransaction(fundTransaction, 'confirmed');
 
       // Add the bumpbot to the user's bumpbots array
+      if (!user.bumpbots) user.bumpbots = [];
       user.bumpbots.push({
         contractAddress,
         amountSOL,
@@ -636,7 +591,8 @@ bot.command('bumpbot', async (ctx) => {
       await user.save();
 
       // Schedule the bumpbot operations (micro buys and sells)
-      const job = schedule.scheduleJob(`bumpbot_${telegramId}_${contractAddress}`, '* * * * *', async () => {
+      const jobName = `bumpbot_${telegramId}_${contractAddress}`;
+      const job = schedule.scheduleJob(jobName, '* * * * *', async () => {
         try {
           const currentUser = await User.findOne({ telegramId });
 
@@ -674,7 +630,7 @@ bot.command('bumpbot', async (ctx) => {
             })
           );
 
-          const sellSignature = await connection.sendTransaction(sellTransaction, [bumpbotKeypair]);
+          const sellSignature = await connection.sendTransaction(sellTransaction, [botKeypair]);
           await connection.confirmTransaction(sellSignature, 'confirmed');
 
           // Notify the user about the bumpbot activity
