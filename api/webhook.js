@@ -1,5 +1,4 @@
 // api/webhook.js
-
 const { Telegraf, session } = require('telegraf');
 const connectDB = require('../utils/database');
 const bot = new Telegraf(process.env.BOT_TOKEN);
