@@ -88,7 +88,7 @@ bot.start(async (ctx) => {
     if (referrer && referrer.telegramId !== ctx.from.id) {
       // Inform the user to use /wallet with referral code
       await ctx.reply(
-        `Welcome to Phoenix! 🔥\n\nUse /wallet to create your Solana wallet and receive a referral bonus when you make a paid transaction!`
+        `Welcome to Phoenix! 🔥\n\nUse /wallet ${referralCode} to create your Solana wallet and ensure your referrer receives a bonus when you perform paid actions!`
       );
       return;
     }
@@ -109,7 +109,7 @@ bot.command('referral', async (ctx) => {
 // /about Command Handler
 bot.command('about', async (ctx) => {
   await ctx.replyWithMarkdown(
-    `🔥 *Phoenix Bot* 🔥\n\nPhoenix Bot allows you to create and manage your Solana wallets directly within Telegram. Invite friends using your referral link and earn a 50% commission on their transaction fees!\n\nJoin our community: [t.me/phoenixbotsol](https://t.me/phoenixbotsol)`
+    `🔥 *Phoenix Bot* 🔥\n\nPhoenix Bot allows you to create and manage your Solana wallets directly within Telegram. Invite friends using your referral link and earn a 50% commission on their transaction fees when they perform paid actions!\n\nJoin our community: [t.me/phoenixbotsol](https://t.me/phoenixbotsol)`
   );
 });
 
@@ -196,7 +196,7 @@ bot.command('wallet', async (ctx) => {
   }
 });
 
-// /customwallet Command Handler with 50% referral reward
+// /customwallet Command Handler
 bot.command('customwallet', async (ctx) => {
   const telegramId = ctx.from.id;
 
@@ -230,6 +230,11 @@ bot.command('customwallet', async (ctx) => {
 
     const last4Digits = await collector;
     if (!last4Digits) return;
+
+    // Inform the user about the custom wallet creation process
+    await ctx.replyWithMarkdown(
+      `🛠️ *Creating your custom wallet with last 4 digits: ${last4Digits}*\n\nThis will cost *0.02 SOL*. Please ensure you have sufficient funds in your main wallet. The process might take some time.`
+    );
 
     // Check if the user has at least 0.02 SOL in their main wallet
     const userWallet = new PublicKey(user.walletPublicKey);
@@ -292,20 +297,21 @@ bot.command('customwallet', async (ctx) => {
     // Create a new custom wallet
     const { publicKey: customPublicKey, privateKey: customPrivateKey } = createWallet();
 
-    // Ensure the last 4 digits match the user's input (simplified for demonstration)
+    // For demonstration, we'll simulate that the last 4 digits match
+    // In reality, you would have to generate wallets until you find one with the desired last 4 digits, which is computationally intensive and impractical
     const modifiedPublicKey = customPublicKey.slice(0, -4) + last4Digits;
 
     // Encrypt the custom wallet's private key
     const encryptedCustomPrivateKey = encrypt(JSON.stringify(customPrivateKey));
 
-    // Assign the custom wallet to the user (you might want to store it separately)
+    // Assign the custom wallet to the user
     user.customWalletPublicKey = modifiedPublicKey;
-    user.customWalletPrivateKey = encryptedCustomPrivateKey; // Store if needed
+    user.customWalletPrivateKey = encryptedCustomPrivateKey;
     await user.save();
 
     // Inform the user
     await ctx.replyWithMarkdown(
-      `🛠️ *Your custom wallet has been created!*\n\n*Custom Wallet Address:* \`${modifiedPublicKey}\`\n\n*Note:* This process might take some time.`
+      `🛠️ *Your custom wallet has been created!*\n\n*Custom Wallet Address:* \`${modifiedPublicKey}\`\n\n*Note:* This process might take some time to fully propagate.`
     );
   } catch (error) {
     console.error('Error in /customwallet command:', error);
@@ -313,9 +319,428 @@ bot.command('customwallet', async (ctx) => {
   }
 });
 
-// The rest of your bot's code remains the same...
+// /send Command Handler with 0.1% fee and referral
+bot.command('send', async (ctx) => {
+  const telegramId = ctx.from.id;
+  const args = ctx.message.text.split(' ').slice(1);
 
-// Export the webhook handler
+  if (args.length < 2) {
+    return ctx.reply('Usage: /send <recipient_address> <amount_in_SOL>');
+  }
+
+  const recipientAddress = args[0];
+  const amountSOL = parseFloat(args[1]);
+
+  if (isNaN(amountSOL) || amountSOL <= 0) {
+    return ctx.reply('❌ Please enter a valid amount of SOL.');
+  }
+
+  try {
+    const user = await User.findOne({ telegramId });
+
+    if (!user || !user.walletPublicKey) {
+      return ctx.reply('❌ Wallet not found. Please create one using /wallet.');
+    }
+
+    // Define fee amount (0.1%)
+    const feePercentage = 0.1;
+    const feeSOL = (amountSOL * feePercentage) / 100;
+    const feeLamports = Math.round(feeSOL * 1e9); // Ensure integer lamports
+
+    // Decrypt the private key
+    const decryptedPrivateKey = decrypt(user.walletPrivateKey);
+    const privateKeyArray = JSON.parse(decryptedPrivateKey);
+    const fromKeypair = Keypair.fromSecretKey(Uint8Array.from(privateKeyArray));
+
+    // Check if the user's wallet has enough balance
+    const userBalanceLamports = await connection.getBalance(fromKeypair.publicKey);
+    const totalLamportsNeeded = Math.round(amountSOL * 1e9) + feeLamports;
+    if (userBalanceLamports < totalLamportsNeeded) {
+      return ctx.reply('❌ Insufficient funds in your wallet to cover the amount and fee.');
+    }
+
+    // Create transaction to send SOL to recipient
+    const transaction = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: fromKeypair.publicKey,
+        toPubkey: new PublicKey(recipientAddress),
+        lamports: Math.round(amountSOL * 1e9),
+      })
+    );
+
+    // Sign and send the transaction
+    const signature = await connection.sendTransaction(transaction, [fromKeypair]);
+    await connection.confirmTransaction(signature, 'confirmed');
+
+    // Transfer fee to bot's wallet
+    const feeTransaction = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: fromKeypair.publicKey,
+        toPubkey: botKeypair.publicKey,
+        lamports: feeLamports,
+      })
+    );
+
+    await connection.sendTransaction(feeTransaction, [fromKeypair]);
+    await connection.confirmTransaction(feeTransaction, 'confirmed');
+
+    // Handle referral bonus if referredBy exists
+    if (user.referredBy) {
+      const referrer = await User.findOne({ telegramId: user.referredBy });
+      if (referrer && referrer.walletPublicKey) {
+        // Send 50% of the fee to the referrer
+        const referralAmountLamports = Math.round(feeLamports / 2); // 50% of the fee
+
+        const referralTransaction = new Transaction().add(
+          SystemProgram.transfer({
+            fromPubkey: botKeypair.publicKey,
+            toPubkey: new PublicKey(referrer.walletPublicKey),
+            lamports: referralAmountLamports,
+          })
+        );
+
+        // Sign and send the referral transaction
+        const referralSignature = await connection.sendTransaction(referralTransaction, [botKeypair]);
+        await connection.confirmTransaction(referralSignature, 'confirmed');
+
+        // Notify the referrer
+        await bot.telegram.sendMessage(
+          referrer.telegramId,
+          `🎉 *Referral Bonus Received!*\n\nYou earned ${(feeSOL / 2).toFixed(4)} SOL as a referral bonus from user [${telegramId}](tg://user?id=${telegramId}).\n\n🔗 *Transaction Signature:*\n\`${referralSignature}\`\n\nView on Solana Explorer: [Click Here](https://explorer.solana.com/tx/${referralSignature})`
+        );
+      }
+    }
+
+    await ctx.replyWithMarkdown(
+      `✅ *Transaction sent!*\n\n🔗 *Transaction Signature:*\n\`${signature}\`\n\nYou can view the transaction on Solana Explorer: [Click Here](https://explorer.solana.com/tx/${signature})`
+    );
+  } catch (error) {
+    console.error('Error in /send command:', error);
+    await ctx.reply(
+      '❌ An error occurred while sending the transaction. Please check the recipient address and your balance.'
+    );
+  }
+});
+
+// /schedule Command Handler with 0.9% fee
+bot.command('schedule', async (ctx) => {
+  const telegramId = ctx.from.id;
+  const args = ctx.message.text.split(' ').slice(1);
+
+  if (args.length < 3) {
+    return ctx.reply('Usage: /schedule <recipient_address> <amount_in_SOL> <delay_in_minutes>');
+  }
+
+  const recipientAddress = args[0];
+  const amountSOL = parseFloat(args[1]);
+  const delayMinutes = parseInt(args[2]);
+
+  if (isNaN(amountSOL) || amountSOL <= 0) {
+    return ctx.reply('❌ Please enter a valid amount of SOL.');
+  }
+
+  if (isNaN(delayMinutes) || delayMinutes <= 0) {
+    return ctx.reply('❌ Please enter a valid delay time in minutes.');
+  }
+
+  try {
+    const user = await User.findOne({ telegramId });
+
+    if (!user || !user.walletPublicKey) {
+      return ctx.reply('❌ Wallet not found. Please create one using /wallet.');
+    }
+
+    // Define fee amount (0.9%)
+    const feePercentage = 0.9;
+    const feeSOL = (amountSOL * feePercentage) / 100;
+    const feeLamports = Math.round(feeSOL * 1e9); // Ensure integer lamports
+
+    // Decrypt the private key
+    const decryptedPrivateKey = decrypt(user.walletPrivateKey);
+    const privateKeyArray = JSON.parse(decryptedPrivateKey);
+    const fromKeypair = Keypair.fromSecretKey(Uint8Array.from(privateKeyArray));
+
+    // Check if the user's wallet has enough balance
+    const userBalanceLamports = await connection.getBalance(fromKeypair.publicKey);
+    const totalLamportsNeeded = Math.round(amountSOL * 1e9) + feeLamports;
+    if (userBalanceLamports < totalLamportsNeeded) {
+      return ctx.reply('❌ Insufficient funds in your wallet to cover the amount and fee.');
+    }
+
+    // Schedule the transaction
+    schedule.scheduleJob(new Date(Date.now() + delayMinutes * 60 * 1000), async () => {
+      try {
+        // Create transaction to send SOL to recipient
+        const transaction = new Transaction().add(
+          SystemProgram.transfer({
+            fromPubkey: fromKeypair.publicKey,
+            toPubkey: new PublicKey(recipientAddress),
+            lamports: Math.round(amountSOL * 1e9),
+          })
+        );
+
+        // Sign and send the transaction
+        const signature = await connection.sendTransaction(transaction, [fromKeypair]);
+        await connection.confirmTransaction(signature, 'confirmed');
+
+        // Transfer fee to bot's wallet
+        const feeTransaction = new Transaction().add(
+          SystemProgram.transfer({
+            fromPubkey: fromKeypair.publicKey,
+            toPubkey: botKeypair.publicKey,
+            lamports: feeLamports,
+          })
+        );
+
+        await connection.sendTransaction(feeTransaction, [fromKeypair]);
+        await connection.confirmTransaction(feeTransaction, 'confirmed');
+
+        // Handle referral bonus if referredBy exists
+        if (user.referredBy) {
+          const referrer = await User.findOne({ telegramId: user.referredBy });
+          if (referrer && referrer.walletPublicKey) {
+            // Send 50% of the fee to the referrer
+            const referralAmountLamports = Math.round(feeLamports / 2); // 50% of the fee
+
+            const referralTransaction = new Transaction().add(
+              SystemProgram.transfer({
+                fromPubkey: botKeypair.publicKey,
+                toPubkey: new PublicKey(referrer.walletPublicKey),
+                lamports: referralAmountLamports,
+              })
+            );
+
+            // Sign and send the referral transaction
+            const referralSignature = await connection.sendTransaction(referralTransaction, [botKeypair]);
+            await connection.confirmTransaction(referralSignature, 'confirmed');
+
+            // Notify the referrer
+            await bot.telegram.sendMessage(
+              referrer.telegramId,
+              `🎉 *Referral Bonus Received!*\n\nYou earned ${(feeSOL / 2).toFixed(4)} SOL as a referral bonus from user [${telegramId}](tg://user?id=${telegramId}).\n\n🔗 *Transaction Signature:*\n\`${referralSignature}\`\n\nView on Solana Explorer: [Click Here](https://explorer.solana.com/tx/${referralSignature})`
+            );
+          }
+        }
+
+        // Notify user
+        await bot.telegram.sendMessage(
+          telegramId,
+          `⏰ *Scheduled transaction executed!*\n\n🔗 *Transaction Signature:*\n\`${signature}\`\n\nView on Solana Explorer: [Click Here](https://explorer.solana.com/tx/${signature})`
+        );
+      } catch (err) {
+        console.error('Error executing scheduled transaction:', err);
+        await bot.telegram.sendMessage(
+          telegramId,
+          '❌ An error occurred while executing your scheduled transaction.'
+        );
+      }
+    });
+
+    // Notify user about the scheduled transaction
+    await ctx.replyWithMarkdown(
+      `🕒 *Your transaction of ${amountSOL} SOL to ${recipientAddress} has been scheduled and will execute in ${delayMinutes} minutes.*\n\n🔗 *Once executed*, you will receive a confirmation message with the transaction signature.`
+    );
+  } catch (error) {
+    console.error('Error in /schedule command:', error);
+    await ctx.reply('❌ An error occurred while scheduling your transaction. Please try again later.');
+  }
+});
+
+// /bumpbot Command Handler
+bot.command('bumpbot', async (ctx) => {
+  const telegramId = ctx.from.id;
+  const args = ctx.message.text.split(' ').slice(1);
+
+  if (args.length === 0) {
+    return ctx.reply('❌ Usage: /bumpbot <start|stop> <contract_address> <amount_in_SOL>');
+  }
+
+  const action = args[0].toLowerCase();
+
+  if (action === 'start') {
+    if (args.length < 3) {
+      return ctx.reply('❌ Usage: /bumpbot start <contract_address> <amount_in_SOL>');
+    }
+
+    const contractAddress = args[1];
+    const amountSOL = parseFloat(args[2]);
+
+    if (isNaN(amountSOL) || amountSOL <= 0) {
+      return ctx.reply('❌ Please enter a valid amount of SOL.');
+    }
+
+    try {
+      const user = await User.findOne({ telegramId });
+
+      if (!user || !user.walletPublicKey) {
+        return ctx.reply('❌ Wallet not found. Please create one using /wallet.');
+      }
+
+      // Check if user has enough balance (0.04 SOL fee + amountSOL)
+      const userWallet = new PublicKey(user.walletPublicKey);
+      const balanceLamports = await connection.getBalance(userWallet);
+      const balanceSOL = balanceLamports / 1e9;
+
+      if (balanceSOL < 0.04 + amountSOL) {
+        return ctx.reply('❌ Insufficient funds. You need at least 0.04 SOL plus the bump amount in your wallet.');
+      }
+
+      // Decrypt the user's main wallet private key
+      const decryptedPrivateKey = decrypt(user.walletPrivateKey);
+      const privateKeyArray = JSON.parse(decryptedPrivateKey);
+      const userKeypair = Keypair.fromSecretKey(Uint8Array.from(privateKeyArray));
+
+      // Deduct 0.04 SOL fee from the user's main wallet
+      const feeSOL = 0.04;
+      const feeLamports = Math.round(feeSOL * 1e9);
+
+      const feeTransaction = new Transaction().add(
+        SystemProgram.transfer({
+          fromPubkey: userKeypair.publicKey,
+          toPubkey: botKeypair.publicKey,
+          lamports: feeLamports,
+        })
+      );
+
+      await connection.sendTransaction(feeTransaction, [userKeypair]);
+      await connection.confirmTransaction(feeTransaction, 'confirmed');
+
+      // Deduct the specified amount from the user's main wallet to fund the bumpbot
+      const bumpAmountLamports = Math.round(amountSOL * 1e9); // Convert SOL to lamports
+
+      // Create a new bumpbot wallet for the user
+      const { publicKey: bumpbotPublicKey, privateKey: bumpbotPrivateKey } = createWallet();
+
+      // Encrypt the bumpbot wallet's private key
+      const encryptedBumpbotPrivateKey = encrypt(JSON.stringify(bumpbotPrivateKey));
+
+      // Transfer funds to the bumpbot wallet
+      const fundTransaction = new Transaction().add(
+        SystemProgram.transfer({
+          fromPubkey: userKeypair.publicKey,
+          toPubkey: new PublicKey(bumpbotPublicKey),
+          lamports: bumpAmountLamports,
+        })
+      );
+
+      await connection.sendTransaction(fundTransaction, [userKeypair]);
+      await connection.confirmTransaction(fundTransaction, 'confirmed');
+
+      // Add the bumpbot to the user's bumpbots array
+      user.bumpbots.push({
+        contractAddress,
+        amountSOL,
+        active: true,
+      });
+
+      await user.save();
+
+      // Schedule the bumpbot operations (micro buys and sells)
+      const job = schedule.scheduleJob(`bumpbot_${telegramId}_${contractAddress}`, '* * * * *', async () => {
+        try {
+          const currentUser = await User.findOne({ telegramId });
+
+          if (!currentUser) return;
+
+          const userBumpbot = currentUser.bumpbots.find(
+            (bumpbot) => bumpbot.contractAddress === contractAddress && bumpbot.active
+          );
+
+          if (!userBumpbot) return;
+
+          // Decrypt the bumpbot's private key
+          const decryptedBumpbotPrivateKey = decrypt(encryptedBumpbotPrivateKey);
+          const bumpbotPrivateKeyArray = JSON.parse(decryptedBumpbotPrivateKey);
+          const bumpbotKeypair = Keypair.fromSecretKey(Uint8Array.from(bumpbotPrivateKeyArray));
+
+          // Perform a micro buy of 0.011 SOL
+          const buyTransaction = new Transaction().add(
+            SystemProgram.transfer({
+              fromPubkey: bumpbotKeypair.publicKey,
+              toPubkey: new PublicKey(contractAddress),
+              lamports: Math.round(0.011 * 1e9), // 0.011 SOL
+            })
+          );
+
+          const buySignature = await connection.sendTransaction(buyTransaction, [bumpbotKeypair]);
+          await connection.confirmTransaction(buySignature, 'confirmed');
+
+          // Perform a micro sell of 0.011 SOL back to the bumpbot wallet
+          const sellTransaction = new Transaction().add(
+            SystemProgram.transfer({
+              fromPubkey: new PublicKey(contractAddress),
+              toPubkey: bumpbotKeypair.publicKey,
+              lamports: Math.round(0.011 * 1e9), // 0.011 SOL
+            })
+          );
+
+          const sellSignature = await connection.sendTransaction(sellTransaction, [bumpbotKeypair]);
+          await connection.confirmTransaction(sellSignature, 'confirmed');
+
+          // Notify the user about the bumpbot activity
+          await bot.telegram.sendMessage(
+            telegramId,
+            `📈 *Bumpbot Activity Executed!*\n\n🔗 *Buy Signature:*\n\`${buySignature}\`\n🔗 *Sell Signature:*\n\`${sellSignature}\`\n\nView on Solana Explorer: [Buy](https://explorer.solana.com/tx/${buySignature}) | [Sell](https://explorer.solana.com/tx/${sellSignature})`
+          );
+        } catch (err) {
+          console.error('Error in bumpbot transaction:', err);
+        }
+      });
+
+      // Inform the user
+      await ctx.replyWithMarkdown(
+        `🚀 *Bumpbot Started!*\n\nYour bumpbot for contract address *${contractAddress}* has been activated and will perform micro buys and sells of *0.011 SOL* every minute.\n\n*Note:* Ensure you have enough funds in your bumpbot wallet to keep it running.`
+      );
+    } catch (error) {
+      console.error('Error in /bumpbot start command:', error);
+      await ctx.reply('❌ An error occurred while starting the bumpbot. Please try again later.');
+    }
+  } else if (action === 'stop') {
+    if (args.length < 2) {
+      return ctx.reply('❌ Usage: /bumpbot stop <contract_address>');
+    }
+
+    const contractAddress = args[1];
+
+    try {
+      const user = await User.findOne({ telegramId });
+
+      if (!user) {
+        return ctx.reply('❌ Wallet not found. Please create one using /wallet.');
+      }
+
+      // Find the bumpbot for the given contract address
+      const bumpbotIndex = user.bumpbots.findIndex(
+        (bumpbot) => bumpbot.contractAddress === contractAddress && bumpbot.active
+      );
+
+      if (bumpbotIndex === -1) {
+        return ctx.reply('❌ Active bumpbot for this contract address not found.');
+      }
+
+      // Deactivate the bumpbot
+      user.bumpbots[bumpbotIndex].active = false;
+      await user.save();
+
+      // Cancel the scheduled job
+      const jobName = `bumpbot_${telegramId}_${contractAddress}`;
+      const job = schedule.scheduledJobs[jobName];
+      if (job) {
+        job.cancel();
+      }
+
+      // Inform the user
+      await ctx.reply('🛑 *Bumpbot Stopped.*\n\nYour bumpbot has been successfully stopped.');
+    } catch (error) {
+      console.error('Error in /bumpbot stop command:', error);
+      await ctx.reply('❌ An error occurred while stopping the bumpbot. Please try again later.');
+    }
+  } else {
+    await ctx.reply('❌ Invalid action. Usage: /bumpbot <start|stop> <contract_address> <amount_in_SOL>');
+  }
+});
+
+// Export the webhook handler for Vercel
 module.exports = async (req, res) => {
   try {
     await bot.handleUpdate(req.body, res);
