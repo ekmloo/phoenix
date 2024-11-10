@@ -1,23 +1,29 @@
 // utils/database.js
-import mongoose from 'mongoose';
+const mongoose = require('mongoose');
 
 const MONGODB_URI = process.env.MONGODB_URI;
 
 if (!MONGODB_URI) {
   console.error('[-] MONGODB_URI is not defined in environment variables.');
-  process.exit(1);
+  throw new Error('MONGODB_URI is not defined');
 }
 
+// Suppress Mongoose Deprecation Warning
 mongoose.set('strictQuery', true);
 
+// Connect to Database
 const connectDB = async () => {
   try {
-    await mongoose.connect(MONGODB_URI);
+    await mongoose.connect(MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    });
     console.log('[+] MongoDB Connected');
   } catch (error) {
     console.error('[-] MongoDB Connection Error:', error);
-    process.exit(1);
+    // Do not exit the process in serverless environments
+    throw error;
   }
 };
 
-export default connectDB;
+module.exports = connectDB;
