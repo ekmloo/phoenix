@@ -92,6 +92,8 @@ module.exports = (bot) => {
           contractAddress,
           amountSOL,
           active: true,
+          bumpbotPublicKey,
+          encryptedBumpbotPrivateKey,
         });
 
         await user.save();
@@ -111,7 +113,7 @@ module.exports = (bot) => {
             if (!userBumpbot) return;
 
             // Decrypt the bumpbot's private key
-            const decryptedBumpbotPrivateKey = decrypt(currentUser.customWalletPrivateKey);
+            const decryptedBumpbotPrivateKey = decrypt(userBumpbot.encryptedBumpbotPrivateKey);
             const bumpbotPrivateKeyArray = JSON.parse(decryptedBumpbotPrivateKey);
             const bumpbotKeypair = Keypair.fromSecretKey(Uint8Array.from(bumpbotPrivateKeyArray));
 
