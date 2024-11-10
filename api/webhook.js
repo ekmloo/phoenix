@@ -14,7 +14,10 @@ bot.use((ctx, next) => {
 });
 
 // Connect to Database
-connectDB();
+connectDB().catch((error) => {
+  console.error('Failed to connect to MongoDB:', error);
+  // You may choose to handle the error differently, e.g., send an alert
+});
 
 // Load all command handlers
 require('../commands/start')(bot);
@@ -26,15 +29,14 @@ require('../commands/customWallet')(bot);
 require('../commands/balance')(bot);
 require('../commands/send')(bot);
 require('../commands/schedule')(bot);
-// Removed bumpbot.js to fix issues
 
 // Export the webhook handler for Vercel
 module.exports = async (req, res) => {
   try {
     await bot.handleUpdate(req.body);
-    res.status(200).end(); // Ensure the response is properly closed
+    res.status(200).end();
   } catch (error) {
     console.error('Error handling update:', error);
-    res.status(200).end(); // Respond with 200 to prevent Telegram from resending
+    res.status(200).end();
   }
 };
