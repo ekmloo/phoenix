@@ -5,7 +5,7 @@ const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY; // Must be exactly 32 charact
 
 if (!ENCRYPTION_KEY || ENCRYPTION_KEY.length !== 32) {
   console.error('[-] ENCRYPTION_KEY must be exactly 32 characters long.');
-  process.exit(1);
+  throw new Error('ENCRYPTION_KEY must be exactly 32 characters long.');
 }
 
 // Encryption Function with Random IV
