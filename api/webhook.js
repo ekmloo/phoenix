@@ -19,7 +19,6 @@ require('../commands/customWallet')(bot);
 require('../commands/balance')(bot);
 require('../commands/send')(bot);
 require('../commands/schedule')(bot);
-require('../commands/bumpbot')(bot);
 
 // Export the webhook handler for Vercel
 module.exports = async (req, res) => {
