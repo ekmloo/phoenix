@@ -1,5 +1,5 @@
 // utils/database.js
-const mongoose = require('mongoose');
+import mongoose from 'mongoose';
 
 const MONGODB_URI = process.env.MONGODB_URI;
 
@@ -8,10 +8,8 @@ if (!MONGODB_URI) {
   process.exit(1);
 }
 
-// Suppress Mongoose Deprecation Warning
 mongoose.set('strictQuery', true);
 
-// Connect to Database
 const connectDB = async () => {
   try {
     await mongoose.connect(MONGODB_URI);
@@ -22,4 +20,4 @@ const connectDB = async () => {
   }
 };
 
-module.exports = connectDB;
+export default connectDB;
