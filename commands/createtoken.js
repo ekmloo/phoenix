@@ -49,19 +49,6 @@ module.exports = (bot) => {
       try {
         const user = await User.findOne({ telegramId: ctx.from.id });
 
-        // Charge 0.02 SOL (Ensure bot has SOL)
-        const fee = 0.02 * 1e9; // in lamports
-        const transaction = new Transaction().add(
-          SystemProgram.transfer({
-            fromPubkey: new PublicKey(user.walletPublicKey),
-            toPubkey: botKeypair.publicKey,
-            lamports: fee,
-          })
-        );
-
-        await connection.sendTransaction(transaction, [botKeypair]);
-        await connection.confirmTransaction(transaction, 'confirmed');
-
         // Create Token
         const token = await Token.createMint(
           connection,
@@ -106,12 +93,13 @@ module.exports = (bot) => {
         if (user.referredBy) {
           const referrer = await User.findOne({ telegramId: user.referredBy });
           if (referrer) {
-            const commission = fee; // 100% of fee
+            // Transfer commission to referrer
+            const commission = Math.round(0.02 * 1e9); // 0.02 SOL fee in lamports
             const commissionTransaction = new Transaction().add(
               SystemProgram.transfer({
                 fromPubkey: botKeypair.publicKey,
                 toPubkey: new PublicKey(referrer.walletPublicKey),
-                lamports: Math.round(commission),
+                lamports: commission,
               })
             );
 
