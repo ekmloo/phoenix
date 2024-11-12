@@ -11,9 +11,15 @@ bot.use((ctx, next) => {
   return next();
 });
 
-connectDB();
+connectDB().catch((error) => {
+  console.error('Failed to connect to MongoDB:', error);
+});
 
+// Load all command handlers
 require('../commands/start')(bot);
+require('../commands/help')(bot);
+require('../commands/about')(bot);
+require('../commands/referral')(bot);
 require('../commands/wallet')(bot);
 require('../commands/balance')(bot);
 require('../commands/send')(bot);
@@ -22,7 +28,8 @@ module.exports = async (req, res) => {
   try {
     await bot.handleUpdate(req.body);
     res.status(200).end();
-  } catch {
+  } catch (error) {
+    console.error('Error handling update:', error);
     res.status(200).end();
   }
 };
