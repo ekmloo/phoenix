@@ -6,7 +6,7 @@ const userSchema = new mongoose.Schema({
   walletPublicKey: { type: String },
   walletPrivateKey: { type: String },
   referredBy: { type: Number },
-  referralEarnings: { type: Number, default: 0 }, // Total SOL earned from referrals
+  referralEarnings: { type: Number, default: 0 },
   token: {
     name: String,
     ticker: String,
