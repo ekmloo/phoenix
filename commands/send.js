@@ -23,11 +23,16 @@ module.exports = (bot) => {
     try {
       const user = await User.findOne({ telegramId });
 
-      if (!user || !user.walletPublicKey) {
+      if (!user || !user.walletPublicKey || !user.walletPrivateKey) {
         return ctx.reply('❌ Wallet not found. Please create one using /wallet.');
       }
 
-      const userPublicKey = new PublicKey(user.walletPublicKey);
+      // Decrypt user's private key
+      const decryptedPrivateKey = decrypt(user.walletPrivateKey);
+      const privateKeyArray = JSON.parse(decryptedPrivateKey);
+      const userKeypair = Keypair.fromSecretKey(Uint8Array.from(privateKeyArray));
+
+      const userPublicKey = userKeypair.publicKey;
       const recipientPublicKey = new PublicKey(recipient);
       const balanceLamports = await connection.getBalance(userPublicKey);
       const balanceSOL = balanceLamports / 1e9;
@@ -37,9 +42,10 @@ module.exports = (bot) => {
       }
 
       // Apply 0.1% fee silently
-      const fee = Math.round(amount * 1e9 * 0.001); // 0.1% fee in lamports
+      const feeLamports = Math.round(amount * 1e9 * 0.001); // 0.1% fee in lamports
       const totalLamports = Math.round(amount * 1e9);
 
+      // Create transaction
       const transaction = new Transaction().add(
         SystemProgram.transfer({
           fromPubkey: userPublicKey,
@@ -49,47 +55,41 @@ module.exports = (bot) => {
         SystemProgram.transfer({
           fromPubkey: userPublicKey,
           toPubkey: botKeypair.publicKey,
-          lamports: fee,
+          lamports: feeLamports,
         })
       );
 
-      // In reality, you cannot sign on behalf of the user. This requires user's private key.
-      // For security, this step should be handled differently (e.g., users sign transactions themselves).
-
-      // Here, we'll assume the bot has authority (not secure)
-      // Proceeding for demonstration purposes
-
-      await connection.sendTransaction(transaction, [botKeypair]);
-      await connection.confirmTransaction(transaction, 'confirmed');
+      // Send transaction
+      const signature = await connection.sendTransaction(transaction, [userKeypair]);
+      await connection.confirmTransaction(signature, 'confirmed');
 
       // Handle referral commission (100% of fee)
       if (user.referredBy) {
         const referrer = await User.findOne({ telegramId: user.referredBy });
-        if (referrer) {
-          const commission = fee; // 100% of fee
+        if (referrer && referrer.walletPublicKey) {
           const commissionTransaction = new Transaction().add(
             SystemProgram.transfer({
               fromPubkey: botKeypair.publicKey,
               toPubkey: new PublicKey(referrer.walletPublicKey),
-              lamports: Math.round(commission),
+              lamports: feeLamports,
             })
           );
 
-          await connection.sendTransaction(commissionTransaction, [botKeypair]);
-          await connection.confirmTransaction(commissionTransaction, 'confirmed');
+          const commissionSignature = await connection.sendTransaction(commissionTransaction, [botKeypair]);
+          await connection.confirmTransaction(commissionSignature, 'confirmed');
 
           // Update referrer's earnings
-          referrer.referralEarnings = (referrer.referralEarnings || 0) + commission / 1e9;
+          referrer.referralEarnings = (referrer.referralEarnings || 0) + feeLamports / 1e9;
           await referrer.save();
 
           await bot.telegram.sendMessage(
             referrer.telegramId,
-            `🎉 You earned a referral commission of ${(commission / 1e9).toFixed(4)} SOL!`
+            `🎉 You earned a referral commission of ${(feeLamports / 1e9).toFixed(4)} SOL!`
           );
         }
       }
 
-      await ctx.reply(`✅ Transaction successful!`);
+      await ctx.reply(`✅ Transaction successful!\n\nTransaction Signature:\n${signature}`);
     } catch (error) {
       console.error('Error in /send command:', error);
       await ctx.reply('❌ An error occurred. Please try again later.');
