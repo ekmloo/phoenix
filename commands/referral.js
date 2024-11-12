@@ -13,8 +13,6 @@ module.exports = (bot) => {
       }
 
       const referralCount = await User.countDocuments({ referredBy: telegramId });
-      console.log(`User ${telegramId} has ${referralCount} referrals.`);
-
       const totalEarnings = user.referralEarnings || 0;
 
       const referralMessage = `🔗 *Your Referral Stats:*
@@ -22,7 +20,7 @@ module.exports = (bot) => {
 • *Referrals:* ${referralCount}
 • *Total Earnings:* ${totalEarnings.toFixed(4)} SOL
 
-Share your referral link: https://t.me/phoenixlaunchbot?start=${telegramId}`;
+Share your referral link: https://t.me/your_bot_username?start=${telegramId}`;
       await ctx.replyWithMarkdown(referralMessage);
     } catch (error) {
       console.error('Error in /referral command:', error);
