@@ -3,7 +3,7 @@ const { PublicKey, Transaction, SystemProgram } = require('@solana/web3.js');
 const { Token, TOKEN_PROGRAM_ID } = require('@solana/spl-token');
 const User = require('../models/user');
 const { connection, botKeypair } = require('../utils/globals');
-const { encrypt, decrypt } = require('../utils/crypto');
+const { encrypt } = require('../utils/crypto');
 
 module.exports = (bot) => {
   bot.command('createtoken', async (ctx) => {
@@ -49,6 +49,19 @@ module.exports = (bot) => {
       try {
         const user = await User.findOne({ telegramId: ctx.from.id });
 
+        // Charge 0.02 SOL
+        const fee = 0.02 * 1e9; // lamports
+        const transaction = new Transaction().add(
+          SystemProgram.transfer({
+            fromPubkey: new PublicKey(user.walletPublicKey),
+            toPubkey: botKeypair.publicKey,
+            lamports: fee,
+          })
+        );
+
+        await connection.sendTransaction(transaction, [botKeypair]);
+        await connection.confirmTransaction(transaction, 'confirmed');
+
         // Create Token
         const token = await Token.createMint(
           connection,
@@ -59,7 +72,7 @@ module.exports = (bot) => {
           TOKEN_PROGRAM_ID
         );
 
-        // Revoke minting authority
+        // Revoke mint authority
         await token.setAuthority(
           token.publicKey,
           null,
@@ -93,13 +106,12 @@ module.exports = (bot) => {
         if (user.referredBy) {
           const referrer = await User.findOne({ telegramId: user.referredBy });
           if (referrer) {
-            // Transfer commission to referrer
-            const commission = Math.round(0.02 * 1e9); // 0.02 SOL fee in lamports
+            const commission = fee; // 100% of fee
             const commissionTransaction = new Transaction().add(
               SystemProgram.transfer({
                 fromPubkey: botKeypair.publicKey,
                 toPubkey: new PublicKey(referrer.walletPublicKey),
-                lamports: commission,
+                lamports: Math.round(commission),
               })
             );
 
@@ -124,11 +136,14 @@ module.exports = (bot) => {
 
 *Name:* ${ctx.session.createtoken.name}
 *Ticker:* ${ctx.session.createtoken.ticker}
-*Mint Address:* ${token.publicKey.toBase58()}
-
-![Token Photo](${ctx.session.createtoken.photoUrl})`,
-          { parse_mode: 'Markdown' }
+*Mint Address:* ${token.publicKey.toBase58()}`,
         );
+
+        // Optionally send the photo
+        await ctx.replyWithPhoto(ctx.session.createtoken.photoUrl, {
+          caption: `![Token Photo](${ctx.session.createtoken.photoUrl})`,
+          parse_mode: 'Markdown',
+        });
 
         ctx.session.createtoken = null;
       } catch (error) {
