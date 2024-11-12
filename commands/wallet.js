@@ -11,6 +11,7 @@ module.exports = (bot) => {
       let user = await User.findOne({ telegramId });
 
       if (!user) {
+        // Create a new wallet
         const keypair = Keypair.generate();
         const walletPublicKey = keypair.publicKey.toBase58();
         const walletPrivateKey = encrypt(JSON.stringify(Array.from(keypair.secretKey)));
@@ -27,6 +28,7 @@ module.exports = (bot) => {
           `🎉 *Your new Solana wallet has been created!*\n\n*Public Key:* \`${walletPublicKey}\``
         );
       } else {
+        // Show existing wallet
         await ctx.replyWithMarkdown(
           `💼 *Your Solana Wallet:*\n\n*Public Key:* \`${user.walletPublicKey}\``
         );
