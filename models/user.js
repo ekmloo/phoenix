@@ -5,6 +5,7 @@ const userSchema = new mongoose.Schema({
   telegramId: { type: Number, unique: true, required: true },
   walletPublicKey: { type: String },
   walletPrivateKey: { type: String },
+  referredBy: { type: Number },
 });
 
 module.exports = mongoose.model('User', userSchema);
