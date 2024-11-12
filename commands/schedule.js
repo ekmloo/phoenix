@@ -35,21 +35,31 @@ module.exports = (bot) => {
       setTimeout(async () => {
         try {
           // Apply 0.9% fee
-          const fee = Math.round(amount * 1e9 * 0.009); // in lamports
+          const fee = Math.round(amount * 1e9 * 0.009); // 0.9% fee in lamports
           const transferLamports = Math.round(amount * 1e9);
+
+          const userPublicKey = new PublicKey(user.walletPublicKey);
+          const recipientPublicKey = new PublicKey(recipient);
 
           const transaction = new Transaction().add(
             SystemProgram.transfer({
-              fromPubkey: new PublicKey(user.walletPublicKey),
-              toPubkey: new PublicKey(recipient),
+              fromPubkey: userPublicKey,
+              toPubkey: recipientPublicKey,
               lamports: transferLamports,
             }),
             SystemProgram.transfer({
-              fromPubkey: new PublicKey(user.walletPublicKey),
+              fromPubkey: userPublicKey,
               toPubkey: botKeypair.publicKey,
               lamports: fee,
             })
           );
+
+          // Note: The bot cannot sign transactions on behalf of the user.
+          // This requires the user's private key, which should never be shared.
+          // Proper SOL transfer implementation would require user signatures.
+
+          // Here, we proceed under the assumption that the bot has the authority,
+          // which is not secure. Implement proper security measures in production.
 
           await connection.sendTransaction(transaction, [botKeypair]);
           await connection.confirmTransaction(transaction, 'confirmed');
