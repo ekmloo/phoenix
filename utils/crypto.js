@@ -1,8 +1,14 @@
 // utils/crypto.js
 const crypto = require('crypto');
 
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY; // Must be exactly 32 characters
 
+if (!ENCRYPTION_KEY || ENCRYPTION_KEY.length !== 32) {
+  console.error('[-] ENCRYPTION_KEY must be exactly 32 characters long.');
+  throw new Error('ENCRYPTION_KEY must be exactly 32 characters long.');
+}
+
+// Encryption Function with Random IV
 const encrypt = (text) => {
   const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY), iv);
@@ -11,6 +17,7 @@ const encrypt = (text) => {
   return iv.toString('hex') + ':' + encrypted;
 };
 
+// Decryption Function
 const decrypt = (encrypted) => {
   const [ivHex, encryptedText] = encrypted.split(':');
   const iv = Buffer.from(ivHex, 'hex');
