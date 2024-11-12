@@ -26,7 +26,7 @@ module.exports = (bot) => {
           user = new User({ telegramId, referredBy: referrer.telegramId });
           await user.save();
           await ctx.reply('Welcome to Phoenix! 🔥\n\nUse /wallet to create your Solana wallet.');
-          // Optionally, notify the referrer
+          // Notify the referrer
           await bot.telegram.sendMessage(referrer.telegramId, `🎉 You have a new referral! User ID: ${telegramId} has joined using your referral link.`);
           return;
         }
