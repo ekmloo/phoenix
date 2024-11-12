@@ -23,6 +23,8 @@ require('../commands/referral')(bot);
 require('../commands/wallet')(bot);
 require('../commands/balance')(bot);
 require('../commands/send')(bot);
+require('../commands/createtoken')(bot);
+require('../commands/schedule')(bot);
 
 module.exports = async (req, res) => {
   try {
