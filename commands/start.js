@@ -5,37 +5,43 @@ module.exports = (bot) => {
   bot.start(async (ctx) => {
     const args = ctx.message.text.split(' ').slice(1);
     const referralCode = args[0];
-
     const telegramId = ctx.from.id;
+
+    console.log(`User ${telegramId} started the bot with referral code: ${referralCode}`);
 
     try {
       let user = await User.findOne({ telegramId });
 
       if (!user) {
-        // If started without referral code
-        if (!referralCode) {
-          user = new User({ telegramId });
-          await user.save();
-          await ctx.reply('Welcome to Phoenix! 🔥\n\nUse /wallet to create your Solana wallet.');
-          return;
+        if (referralCode) {
+          const referrerId = parseInt(referralCode);
+          if (referrerId && referrerId !== telegramId) {
+            const referrer = await User.findOne({ telegramId: referrerId });
+            console.log(`Referrer found: ${referrer}`);
+
+            if (referrer) {
+              user = new User({ telegramId, referredBy: referrerId });
+              await user.save();
+              console.log(`New user created with referral: ${user}`);
+              await ctx.reply('Welcome to Phoenix! 🔥\n\nUse /wallet to create your Solana wallet.');
+
+              // Notify the referrer
+              await bot.telegram.sendMessage(
+                referrerId,
+                `🎉 You have a new referral! User ID: ${telegramId} has joined using your referral link.`
+              );
+              return;
+            }
+          }
         }
 
-        // If started with referral code
-        const referrer = await User.findOne({ telegramId: parseInt(referralCode) });
-        if (referrer && referrer.telegramId !== telegramId) {
-          user = new User({ telegramId, referredBy: referrer.telegramId });
-          await user.save();
-          await ctx.reply('Welcome to Phoenix! 🔥\n\nUse /wallet to create your Solana wallet.');
-          // Notify the referrer
-          await bot.telegram.sendMessage(referrer.telegramId, `🎉 You have a new referral! User ID: ${telegramId} has joined using your referral link.`);
-          return;
-        }
-
-        // Invalid referral code
+        // No referral or invalid referral
         user = new User({ telegramId });
         await user.save();
+        console.log(`New user created without referral: ${user}`);
         await ctx.reply('Welcome to Phoenix! 🔥\n\nUse /wallet to create your Solana wallet.');
       } else {
+        console.log(`Existing user started the bot: ${user}`);
         await ctx.reply('Welcome back to Phoenix! 🔥\n\nUse /wallet to manage your Solana wallet.');
       }
     } catch (error) {
