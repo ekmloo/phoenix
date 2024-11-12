@@ -22,7 +22,7 @@ module.exports = (bot) => {
 • *Referrals:* ${referralCount}
 • *Total Earnings:* ${totalEarnings.toFixed(4)} SOL
 
-Share your referral link: https://t.me/your_bot_username?start=${telegramId}`;
+Share your referral link: https://t.me/phoenixlaunchbot?start=${telegramId}`;
       await ctx.replyWithMarkdown(referralMessage);
     } catch (error) {
       console.error('Error in /referral command:', error);
