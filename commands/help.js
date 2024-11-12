@@ -10,6 +10,9 @@ module.exports = (bot) => {
 /wallet - Create or view your Solana wallet.
 /balance - Check your wallet balance.
 /send <address> <amount> - Send SOL to another address.
+/createtoken - Create a new token on Solana.
+/referral - View your referral stats.
+/schedule <recipient_address> <amount_in_SOL> <delay_in_minutes> - Schedule a SOL transfer.
     `;
     await ctx.replyWithMarkdown(helpMessage);
   });
