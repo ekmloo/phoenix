@@ -9,11 +9,19 @@ module.exports = (bot) => {
       const user = await User.findOne({ telegramId });
 
       if (!user) {
-        return ctx.reply('❌ Wallet not found. Please create one using /wallet.');
+        return ctx.reply('❌ You have not created a wallet yet. Use /wallet to get started.');
       }
 
-      const referralLink = `https://t.me/phoenixlaunchbot?start=${telegramId}`;
-      await ctx.replyWithMarkdown(`🔗 *Your Referral Link:*\n${referralLink}`);
+      const referralCount = await User.countDocuments({ referredBy: telegramId });
+      const totalEarnings = user.referralEarnings || 0;
+
+      const referralMessage = `🔗 *Your Referral Stats:*
+
+• *Referrals:* ${referralCount}
+• *Total Earnings:* ${totalEarnings.toFixed(4)} SOL
+
+Share your referral link: https://t.me/phoenixlaunchbot?start=${telegramId}`;
+      await ctx.replyWithMarkdown(referralMessage);
     } catch (error) {
       console.error('Error in /referral command:', error);
       await ctx.reply('❌ An error occurred. Please try again later.');
