@@ -1,9 +1,8 @@
 // commands/createtoken.js
-const { Markup } = require('telegraf');
-const User = require('../models/user');
-const { connection, botKeypair } = require('../utils/globals');
 const { PublicKey, Transaction, SystemProgram } = require('@solana/web3.js');
 const { Token, TOKEN_PROGRAM_ID } = require('@solana/spl-token');
+const User = require('../models/user');
+const { connection, botKeypair } = require('../utils/globals');
 const { encrypt, decrypt } = require('../utils/crypto');
 
 module.exports = (bot) => {
@@ -16,7 +15,6 @@ module.exports = (bot) => {
     }
 
     ctx.session.createtoken = { step: 1 };
-
     await ctx.reply('📛 *Enter the Token Name:*', { parse_mode: 'Markdown' });
   });
 
@@ -47,38 +45,34 @@ module.exports = (bot) => {
       ctx.session.createtoken.step = 4;
 
       await ctx.reply('🔄 Creating your token. Please wait...');
-      
-      // Charge 0.02 SOL
-      try {
-        const userWallet = new PublicKey(user.walletPublicKey);
-        const fee = 0.02 * 1e9; // in lamports
 
+      try {
+        const user = await User.findOne({ telegramId: ctx.from.id });
+
+        // Charge 0.02 SOL (Ensure bot has SOL)
+        const fee = 0.02 * 1e9; // in lamports
         const transaction = new Transaction().add(
           SystemProgram.transfer({
-            fromPubkey: userWallet,
+            fromPubkey: new PublicKey(user.walletPublicKey),
             toPubkey: botKeypair.publicKey,
             lamports: fee,
           })
         );
 
-        // Normally, you'd need the user's private key to sign, which is not secure.
-        // Instead, consider using a payment gateway or escrow system.
-
-        // For demonstration, assuming the bot can sign on behalf
-        // WARNING: This is not secure and should be handled properly.
-        // Skipping actual SOL transfer due to security concerns.
+        await connection.sendTransaction(transaction, [botKeypair]);
+        await connection.confirmTransaction(transaction, 'confirmed');
 
         // Create Token
         const token = await Token.createMint(
           connection,
           botKeypair,
           botKeypair.publicKey,
-          null, // Freeze Authority set to null
+          null, // Freeze Authority revoked
           0, // Decimals
           TOKEN_PROGRAM_ID
         );
 
-        // Revoke minting by setting mint authority to null
+        // Revoke minting authority
         await token.setAuthority(
           token.publicKey,
           null,
@@ -88,9 +82,17 @@ module.exports = (bot) => {
         );
 
         // Create Token Account for user
-        const userTokenAccount = await token.getOrCreateAssociatedAccountInfo(userWallet);
+        const userTokenAccount = await token.getOrCreateAssociatedAccountInfo(
+          new PublicKey(user.walletPublicKey)
+        );
 
-        // Optionally, set metadata using Metaplex (not included here)
+        // Mint 1 token to user
+        await token.mintTo(
+          userTokenAccount.address,
+          botKeypair.publicKey,
+          [],
+          1
+        );
 
         // Save token info to user
         user.token = {
@@ -99,28 +101,47 @@ module.exports = (bot) => {
           photoUrl: ctx.session.createtoken.photoUrl,
           mintAddress: token.publicKey.toBase58(),
         };
-        await user.save();
 
-        // Handle referral commission
+        // Handle referral commission (100% to referrer)
         if (user.referredBy) {
           const referrer = await User.findOne({ telegramId: user.referredBy });
           if (referrer) {
-            // Credit referrer with a commission (e.g., 50% of fee)
-            // Implement commission logic here
-            // For demonstration, just sending a message
+            const commission = fee; // 100% of fee
+            const commissionTransaction = new Transaction().add(
+              SystemProgram.transfer({
+                fromPubkey: botKeypair.publicKey,
+                toPubkey: new PublicKey(referrer.walletPublicKey),
+                lamports: Math.round(commission),
+              })
+            );
+
+            await connection.sendTransaction(commissionTransaction, [botKeypair]);
+            await connection.confirmTransaction(commissionTransaction, 'confirmed');
+
+            // Update referrer's earnings
+            referrer.referralEarnings = (referrer.referralEarnings || 0) + commission / 1e9;
+            await referrer.save();
+
             await bot.telegram.sendMessage(
               referrer.telegramId,
-              `🎉 Your referral has created a new token! You earned a commission.`
+              `🎉 You earned a referral commission of ${(commission / 1e9).toFixed(4)} SOL!`
             );
           }
         }
 
+        await user.save();
+
         await ctx.replyWithMarkdown(
-          `✅ *Token Created Successfully!*\n\n*Name:* ${ctx.session.createtoken.name}\n*Ticker:* ${ctx.session.createtoken.ticker}\n*Mint Address:* ${token.publicKey.toBase58()}\n\n![Token Photo](${ctx.session.createtoken.photoUrl})`,
+          `✅ *Token Created Successfully!*
+
+*Name:* ${ctx.session.createtoken.name}
+*Ticker:* ${ctx.session.createtoken.ticker}
+*Mint Address:* ${token.publicKey.toBase58()}
+
+![Token Photo](${ctx.session.createtoken.photoUrl})`,
           { parse_mode: 'Markdown' }
         );
 
-        // Clear session
         ctx.session.createtoken = null;
       } catch (error) {
         console.error('Error creating token:', error);
