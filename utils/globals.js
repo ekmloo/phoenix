@@ -1,34 +1,35 @@
 // utils/globals.js
-const { Connection, clusterApiUrl, Keypair } = require('@solana/web3.js');
 
-const connection = new Connection(clusterApiUrl('mainnet-beta'), 'confirmed');
+const BOT_WALLET_PRIVATE_KEY = process.env.BOT_WALLET_PRIVATE_KEY;
 
-// Initialize Bot's Keypair
-let botKeypair;
-try {
-  const BOT_WALLET_PRIVATE_KEY = process.env.BOT_WALLET_PRIVATE_KEY;
-  if (!BOT_WALLET_PRIVATE_KEY) {
-    throw new Error('BOT_WALLET_PRIVATE_KEY is not defined in environment variables.');
-  }
-  const botSecretKey = Uint8Array.from(JSON.parse(BOT_WALLET_PRIVATE_KEY));
-  botKeypair = Keypair.fromSecretKey(botSecretKey);
-} catch (error) {
-  console.error('[-] Invalid BOT_WALLET_PRIVATE_KEY. It should be a JSON array of numbers.');
-  throw error;
+if (!BOT_WALLET_PRIVATE_KEY) {
+  throw new Error('BOT_WALLET_PRIVATE_KEY is not defined in environment variables.');
 }
 
-// Initialize Fee Wallet Keypair
-let feeKeypair;
+let privateKeyArray;
 try {
-  const FEE_WALLET_PRIVATE_KEY = process.env.FEE_WALLET_PRIVATE_KEY;
-  if (!FEE_WALLET_PRIVATE_KEY) {
-    throw new Error('FEE_WALLET_PRIVATE_KEY is not defined in environment variables.');
+  // Ensure that the environment variable is a string representing a JSON array
+  if (typeof BOT_WALLET_PRIVATE_KEY !== 'string') {
+    throw new Error('BOT_WALLET_PRIVATE_KEY should be a string.');
   }
-  const feeSecretKey = Uint8Array.from(JSON.parse(FEE_WALLET_PRIVATE_KEY));
-  feeKeypair = Keypair.fromSecretKey(feeSecretKey);
+
+  privateKeyArray = JSON.parse(BOT_WALLET_PRIVATE_KEY);
+
+  if (!Array.isArray(privateKeyArray)) {
+    throw new Error('BOT_WALLET_PRIVATE_KEY should be a JSON array.');
+  }
+
+  // Validate that all elements are numbers
+  const isValid = privateKeyArray.every(num => typeof num === 'number');
+  if (!isValid) {
+    throw new Error('All elements in BOT_WALLET_PRIVATE_KEY should be numbers.');
+  }
 } catch (error) {
-  console.error('[-] Invalid FEE_WALLET_PRIVATE_KEY. It should be a JSON array of numbers.');
-  throw error;
+  console.error('Error parsing BOT_WALLET_PRIVATE_KEY:', error.message);
+  throw new Error('Invalid BOT_WALLET_PRIVATE_KEY. It should be a JSON array of numbers.');
 }
 
-module.exports = { connection, botKeypair, feeKeypair };
+module.exports = {
+  BOT_WALLET_PRIVATE_KEY: privateKeyArray,
+  // other globals
+};
