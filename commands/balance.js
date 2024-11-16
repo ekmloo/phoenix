@@ -1,27 +1,37 @@
 // commands/balance.js
+
 const { PublicKey } = require('@solana/web3.js');
-const { connection } = require('../utils/globals');
+const { connection } = require('../utils/globals'); // Ensure correct path
 const User = require('../models/user');
 
-module.exports = (bot) => {
-  bot.command('balance', async (ctx) => {
-    const telegramId = ctx.from.id;
+const execute = async (ctx) => {
+  try {
+    const user = await User.findOne({ telegramId: ctx.from.id });
 
-    try {
-      const user = await User.findOne({ telegramId });
-
-      if (!user || !user.walletPublicKey) {
-        return ctx.reply('❌ Wallet not found. Please create one using /wallet.');
-      }
-
-      const userWallet = new PublicKey(user.walletPublicKey);
-      const balanceLamports = await connection.getBalance(userWallet);
-      const balanceSOL = balanceLamports / 1e9;
-
-      await ctx.replyWithMarkdown(`💰 *Your wallet balance is:* ${balanceSOL} SOL`);
-    } catch (error) {
-      console.error('Error in /balance command:', error);
-      await ctx.reply('❌ An error occurred. Please try again later.');
+    if (!user || !user.walletPublicKey) {
+      return ctx.reply('You do not have a wallet associated with your account.');
     }
-  });
+
+    const publicKey = new PublicKey(user.walletPublicKey);
+    
+    // Ensure connection is defined
+    if (!connection) {
+      console.error('Connection object is undefined.');
+      return ctx.reply('Server is currently unable to fetch your balance. Please try again later.');
+    }
+
+    const balance = await connection.getBalance(publicKey); // Line 18
+
+    const solBalance = balance / 1e9;
+
+    ctx.reply(`Your balance is ${solBalance} SOL.`);
+  } catch (error) {
+    console.error('Error in /balance command:', error);
+    ctx.reply('An error occurred while fetching your balance. Please try again later.');
+  }
+};
+
+module.exports = {
+  command: 'balance',
+  execute,
 };
