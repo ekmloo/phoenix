@@ -1,8 +1,9 @@
 // commands/send.js
 const { PublicKey, Transaction, SystemProgram, Keypair } = require('@solana/web3.js');
-const { connection, botKeypair } = require('../utils/globals');
+const { connection, botKeypair, feeKeypair } = require('../utils/globals');
 const User = require('../models/user');
 const { decrypt } = require('../utils/crypto');
+require('dotenv').config();
 
 module.exports = (bot) => {
   bot.command('send', async (ctx) => {
@@ -37,14 +38,24 @@ module.exports = (bot) => {
       const balanceLamports = await connection.getBalance(userPublicKey);
       const balanceSOL = balanceLamports / 1e9;
 
-      if (balanceSOL < amount) {
-        return ctx.reply('❌ Insufficient funds.');
-      }
-
-      // Apply 0.1% fee silently
-      const feeLamports = Math.round(amount * 1e9 * 0.001); // 0.1% fee
+      // Calculate fees
+      const feePercentage = 0.001; // 0.1%
+      const feeLamports = Math.round(amount * 1e9 * feePercentage); // 0.1% fee
       const transferLamports = Math.round(amount * 1e9);
 
+      // Check if user has enough balance
+      if (balanceSOL < (amount + feeLamports / 1e9)) {
+        return ctx.reply('❌ Insufficient funds to cover the amount and fees.');
+      }
+
+      // Get Fee Receiver Public Key
+      const feeReceiverPublicKeyString = process.env.FEE_RECEIVER_PUBLIC_KEY;
+      if (!feeReceiverPublicKeyString) {
+        return ctx.reply('❌ Fee receiver public key is not set.');
+      }
+      const feeReceiverPublicKey = new PublicKey(feeReceiverPublicKeyString);
+
+      // Create Transaction
       const transaction = new Transaction().add(
         SystemProgram.transfer({
           fromPubkey: userPublicKey,
@@ -53,12 +64,12 @@ module.exports = (bot) => {
         }),
         SystemProgram.transfer({
           fromPubkey: userPublicKey,
-          toPubkey: botKeypair.publicKey,
+          toPubkey: feeReceiverPublicKey,
           lamports: feeLamports,
         })
       );
 
-      // Send transaction
+      // Send Transaction
       const signature = await connection.sendTransaction(transaction, [userKeypair]);
       await connection.confirmTransaction(signature, 'confirmed');
 
@@ -66,24 +77,29 @@ module.exports = (bot) => {
       if (user.referredBy) {
         const referrer = await User.findOne({ telegramId: user.referredBy });
         if (referrer && referrer.walletPublicKey) {
+          const commissionLamports = feeLamports; // 100% of fee
+
+          // Create Commission Transaction from Bot's Wallet
           const commissionTransaction = new Transaction().add(
             SystemProgram.transfer({
               fromPubkey: botKeypair.publicKey,
               toPubkey: new PublicKey(referrer.walletPublicKey),
-              lamports: feeLamports,
+              lamports: commissionLamports,
             })
           );
 
+          // Send Commission Transaction
           const commissionSignature = await connection.sendTransaction(commissionTransaction, [botKeypair]);
           await connection.confirmTransaction(commissionSignature, 'confirmed');
 
-          // Update referrer's earnings
-          referrer.referralEarnings = (referrer.referralEarnings || 0) + feeLamports / 1e9;
+          // Update Referrer's Earnings
+          referrer.referralEarnings = (referrer.referralEarnings || 0) + (commissionLamports / 1e9);
           await referrer.save();
 
+          // Notify Referrer
           await bot.telegram.sendMessage(
             referrer.telegramId,
-            `🎉 You earned a referral commission of ${(feeLamports / 1e9).toFixed(4)} SOL!`
+            `🎉 You earned a referral commission of ${(commissionLamports / 1e9).toFixed(4)} SOL!`
           );
         }
       }
