@@ -55,7 +55,14 @@ module.exports = (bot) => {
       }
       const feeReceiverPublicKey = new PublicKey(feeReceiverPublicKeyString);
 
-      // Create Transaction
+      // Validate recipient address
+      try {
+        new PublicKey(recipient);
+      } catch (e) {
+        return ctx.reply('❌ Invalid recipient address.');
+      }
+
+      // Simulate Transaction
       const transaction = new Transaction().add(
         SystemProgram.transfer({
           fromPubkey: userPublicKey,
@@ -68,6 +75,11 @@ module.exports = (bot) => {
           lamports: feeLamports,
         })
       );
+
+      const simulation = await connection.simulateTransaction(transaction, [userKeypair]);
+      if (simulation.value.err) {
+        throw new Error(JSON.stringify(simulation.value.err));
+      }
 
       // Send Transaction
       const signature = await connection.sendTransaction(transaction, [userKeypair]);
@@ -87,6 +99,12 @@ module.exports = (bot) => {
               lamports: commissionLamports,
             })
           );
+
+          // Simulate Commission Transaction
+          const commissionSim = await connection.simulateTransaction(commissionTransaction, [botKeypair]);
+          if (commissionSim.value.err) {
+            throw new Error(`Commission Transaction failed: ${JSON.stringify(commissionSim.value.err)}`);
+          }
 
           // Send Commission Transaction
           const commissionSignature = await connection.sendTransaction(commissionTransaction, [botKeypair]);
