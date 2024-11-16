@@ -1,5 +1,5 @@
 // commands/send.js
-const { PublicKey, Transaction, SystemProgram } = require('@solana/web3.js');
+const { PublicKey, Transaction, SystemProgram, Keypair } = require('@solana/web3.js');
 const { connection, botKeypair } = require('../utils/globals');
 const User = require('../models/user');
 const { decrypt } = require('../utils/crypto');
@@ -42,15 +42,14 @@ module.exports = (bot) => {
       }
 
       // Apply 0.1% fee silently
-      const feeLamports = Math.round(amount * 1e9 * 0.001); // 0.1% fee in lamports
-      const totalLamports = Math.round(amount * 1e9);
+      const feeLamports = Math.round(amount * 1e9 * 0.001); // 0.1% fee
+      const transferLamports = Math.round(amount * 1e9);
 
-      // Create transaction
       const transaction = new Transaction().add(
         SystemProgram.transfer({
           fromPubkey: userPublicKey,
           toPubkey: recipientPublicKey,
-          lamports: totalLamports,
+          lamports: transferLamports,
         }),
         SystemProgram.transfer({
           fromPubkey: userPublicKey,
