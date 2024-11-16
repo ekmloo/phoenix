@@ -12,18 +12,24 @@ const BOT_WALLET_PRIVATE_KEY = process.env.BOT_WALLET_PRIVATE_KEY;
 
 // Validate Environment Variables
 if (!BOT_TOKEN) {
-  throw new Error('Environment variable BOT_TOKEN is not defined.');
+  console.error('❌ Environment variable BOT_TOKEN is not defined.');
+  throw new Error('BOT_TOKEN is required.');
 }
 
 if (!MONGODB_URI) {
-  throw new Error('Environment variable MONGODB_URI is not defined.');
+  console.error('❌ Environment variable MONGODB_URI is not defined.');
+  throw new Error('MONGODB_URI is required.');
 }
 
 if (BOT_WALLET_PRIVATE_KEY) {
   try {
-    JSON.parse(BOT_WALLET_PRIVATE_KEY);
+    const parsedKey = JSON.parse(BOT_WALLET_PRIVATE_KEY);
+    if (!Array.isArray(parsedKey) || !parsedKey.every(num => typeof num === 'number')) {
+      throw new Error();
+    }
   } catch (error) {
-    throw new Error('BOT_WALLET_PRIVATE_KEY must be a valid JSON array of numbers.');
+    console.error('❌ BOT_WALLET_PRIVATE_KEY must be a valid JSON array of numbers.');
+    throw new Error('Invalid BOT_WALLET_PRIVATE_KEY format.');
   }
 }
 
@@ -70,7 +76,7 @@ bot.command('balance', async (ctx) => {
     const user = await User.findOne({ telegramId });
 
     if (!user || !user.walletPublicKey) {
-      return ctx.reply('❗ You do not have a wallet associated with your account. Please set it using /setwallet command.');
+      return ctx.reply('❗ You do not have a wallet associated with your account. Please set it using `/setwallet` command.', { parse_mode: 'Markdown' });
     }
 
     const publicKey = new PublicKey(user.walletPublicKey);
@@ -121,6 +127,11 @@ bot.command('setwallet', async (ctx) => {
 // Handle Unknown Commands
 bot.on('text', (ctx) => {
   ctx.reply('❓ Unknown command. Available commands:\n• `/balance` - Check your SOL balance\n• `/setwallet` - Set your wallet public key', { parse_mode: 'Markdown' });
+});
+
+// Error Handling Middleware
+bot.catch((err, ctx) => {
+  console.error(`❌ Telegraf Error for ${ctx.updateType}`, err);
 });
 
 // Graceful Shutdown (optional but recommended)
