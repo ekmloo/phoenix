@@ -26,6 +26,9 @@ require('../commands/send')(bot);
 require('../commands/createtoken')(bot);
 require('../commands/schedule')(bot);
 
+// Start Monitoring
+require('../utils/monitor')();
+
 module.exports = async (req, res) => {
   try {
     await bot.handleUpdate(req.body);
