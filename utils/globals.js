@@ -17,4 +17,18 @@ try {
   throw error;
 }
 
-module.exports = { connection, botKeypair };
+// Initialize Fee Wallet Keypair
+let feeKeypair;
+try {
+  const FEE_WALLET_PRIVATE_KEY = process.env.FEE_WALLET_PRIVATE_KEY;
+  if (!FEE_WALLET_PRIVATE_KEY) {
+    throw new Error('FEE_WALLET_PRIVATE_KEY is not defined in environment variables.');
+  }
+  const feeSecretKey = Uint8Array.from(JSON.parse(FEE_WALLET_PRIVATE_KEY));
+  feeKeypair = Keypair.fromSecretKey(feeSecretKey);
+} catch (error) {
+  console.error('[-] Invalid FEE_WALLET_PRIVATE_KEY. It should be a JSON array of numbers.');
+  throw error;
+}
+
+module.exports = { connection, botKeypair, feeKeypair };
