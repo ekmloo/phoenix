@@ -1,30 +1,29 @@
-// commands/send.js
 const { PublicKey, Transaction, SystemProgram, Keypair } = require('@solana/web3.js');
-const { connection, botKeypair, feeKeypair } = require('../utils/globals');
-const User = require('../models/user');
-const { decrypt } = require('../utils/crypto');
+const { connection } = require('../utils/globals'); // Make sure `connection` is properly initialized
+const User = require('../models/user'); // Ensure this points to your database model
+const { decrypt } = require('../utils/crypto'); // Ensure this decryption method is valid
 require('dotenv').config();
 
 module.exports = (bot) => {
   bot.command('send', async (ctx) => {
-    const telegramId = ctx.from.id;
-    const args = ctx.message.text.split(' ').slice(1);
-
-    if (args.length < 2) {
-      return ctx.reply('❌ Usage: /send <recipient_address> <amount_in_SOL>');
-    }
-
-    const [recipient, amountSOL] = args;
-    const amount = parseFloat(amountSOL);
-
-    if (isNaN(amount) || amount <= 0) {
-      return ctx.reply('❌ Please enter a valid amount of SOL.');
-    }
-
     try {
-      const user = await User.findOne({ telegramId });
+      const telegramId = ctx.from.id;
+      const args = ctx.message.text.split(' ').slice(1);
 
-      if (!user || !user.walletPublicKey || !user.walletPrivateKey) {
+      if (args.length < 2) {
+        return ctx.reply('❌ Usage: /send <recipient_address> <amount_in_SOL>');
+      }
+
+      const [recipient, amountSOL] = args;
+      const amount = parseFloat(amountSOL);
+
+      if (isNaN(amount) || amount <= 0) {
+        return ctx.reply('❌ Please enter a valid amount of SOL.');
+      }
+
+      // Fetch user data
+      const user = await User.findOne({ telegramId });
+      if (!user || !user.walletPrivateKey) {
         return ctx.reply('❌ Wallet not found. Please create one using /wallet.');
       }
 
@@ -35,97 +34,32 @@ module.exports = (bot) => {
 
       const userPublicKey = userKeypair.publicKey;
       const recipientPublicKey = new PublicKey(recipient);
+
+      // Check user's balance
       const balanceLamports = await connection.getBalance(userPublicKey);
       const balanceSOL = balanceLamports / 1e9;
 
-      // Calculate fees
-      const feePercentage = 0.001; // 0.1%
-      const feeLamports = Math.round(amount * 1e9 * feePercentage); // 0.1% fee
-      const transferLamports = Math.round(amount * 1e9);
-
-      // Check if user has enough balance
-      if (balanceSOL < (amount + feeLamports / 1e9)) {
-        return ctx.reply('❌ Insufficient funds to cover the amount and fees.');
+      if (balanceSOL < amount) {
+        return ctx.reply('❌ Insufficient funds.');
       }
 
-      // Get Fee Receiver Public Key
-      const feeReceiverPublicKeyString = process.env.FEE_RECEIVER_PUBLIC_KEY;
-      if (!feeReceiverPublicKeyString) {
-        return ctx.reply('❌ Fee receiver public key is not set.');
-      }
-      const feeReceiverPublicKey = new PublicKey(feeReceiverPublicKeyString);
-
-      // Validate recipient address
-      try {
-        new PublicKey(recipient);
-      } catch (e) {
-        return ctx.reply('❌ Invalid recipient address.');
-      }
-
-      // Simulate Transaction
+      // Transaction creation
       const transaction = new Transaction().add(
         SystemProgram.transfer({
           fromPubkey: userPublicKey,
           toPubkey: recipientPublicKey,
-          lamports: transferLamports,
-        }),
-        SystemProgram.transfer({
-          fromPubkey: userPublicKey,
-          toPubkey: feeReceiverPublicKey,
-          lamports: feeLamports,
+          lamports: Math.round(amount * 1e9),
         })
       );
 
-      const simulation = await connection.simulateTransaction(transaction, [userKeypair]);
-      if (simulation.value.err) {
-        throw new Error(JSON.stringify(simulation.value.err));
-      }
-
-      // Send Transaction
+      // Send transaction
       const signature = await connection.sendTransaction(transaction, [userKeypair]);
       await connection.confirmTransaction(signature, 'confirmed');
 
-      // Handle referral commission (100% of fee)
-      if (user.referredBy) {
-        const referrer = await User.findOne({ telegramId: user.referredBy });
-        if (referrer && referrer.walletPublicKey) {
-          const commissionLamports = feeLamports; // 100% of fee
-
-          // Create Commission Transaction from Bot's Wallet
-          const commissionTransaction = new Transaction().add(
-            SystemProgram.transfer({
-              fromPubkey: botKeypair.publicKey,
-              toPubkey: new PublicKey(referrer.walletPublicKey),
-              lamports: commissionLamports,
-            })
-          );
-
-          // Simulate Commission Transaction
-          const commissionSim = await connection.simulateTransaction(commissionTransaction, [botKeypair]);
-          if (commissionSim.value.err) {
-            throw new Error(`Commission Transaction failed: ${JSON.stringify(commissionSim.value.err)}`);
-          }
-
-          // Send Commission Transaction
-          const commissionSignature = await connection.sendTransaction(commissionTransaction, [botKeypair]);
-          await connection.confirmTransaction(commissionSignature, 'confirmed');
-
-          // Update Referrer's Earnings
-          referrer.referralEarnings = (referrer.referralEarnings || 0) + (commissionLamports / 1e9);
-          await referrer.save();
-
-          // Notify Referrer
-          await bot.telegram.sendMessage(
-            referrer.telegramId,
-            `🎉 You earned a referral commission of ${(commissionLamports / 1e9).toFixed(4)} SOL!`
-          );
-        }
-      }
-
-      await ctx.reply(`✅ Transaction successful!\n\nTransaction Signature:\n${signature}`);
+      return ctx.reply(`✅ Transaction successful!\n\nTransaction Signature:\n${signature}`);
     } catch (error) {
       console.error('Error in /send command:', error);
-      await ctx.reply('❌ An error occurred. Please try again later.');
+      return ctx.reply('❌ An error occurred. Please try again later.');
     }
   });
 };
