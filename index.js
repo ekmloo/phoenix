@@ -4,7 +4,7 @@ const { Telegraf, Scenes, session } = require('telegraf');
 const startCommand = require('./commands/start');
 const walletCommand = require('./commands/wallet');
 const sendScene = require('./commands/send');
-const balanceCommand = require('./commands/balance'); // Import the balance command
+const balanceCommand = require('./commands/balance');
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 
@@ -15,7 +15,7 @@ if (!BOT_TOKEN) {
 
 const bot = new Telegraf(BOT_TOKEN);
 
-// Initialize Stage without default scene
+// Initialize Stage without setting a default scene
 const stage = new Scenes.Stage([sendScene]);
 
 // Use session middleware
