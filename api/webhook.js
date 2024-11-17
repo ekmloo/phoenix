@@ -3,6 +3,7 @@
 const { Telegraf } = require('telegraf');
 const startCommand = require('../commands/start');
 
+// Initialize environment variables
 const BOT_TOKEN = process.env.BOT_TOKEN;
 
 if (!BOT_TOKEN) {
@@ -16,12 +17,4 @@ const bot = new Telegraf(BOT_TOKEN);
 bot.command(startCommand.command, startCommand.execute);
 
 // Export webhook handler
-module.exports = async (req, res) => {
-  try {
-    await bot.handleUpdate(req.body);
-    res.status(200).send('OK');
-  } catch (error) {
-    console.error('Error handling update:', error);
-    res.status(500).send('Internal Server Error');
-  }
-};
+module.exports = bot.webhookCallback('/api/webhook');
