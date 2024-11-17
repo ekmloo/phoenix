@@ -4,6 +4,16 @@ const connectToDatabase = require('../db');
 const User = require('../models/User');
 const { Connection, PublicKey, clusterApiUrl } = require('@solana/web3.js');
 
+// Helper function to validate Solana wallet addresses
+function isValidSolanaAddress(address) {
+  try {
+    new PublicKey(address);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 module.exports = {
   command: 'balance',
   description: 'Check the balance of your Solana wallet',
