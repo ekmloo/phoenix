@@ -66,13 +66,16 @@ const sendScene = new Scenes.WizardScene(
         return ctx.scene.leave();
       }
       
-      if (!user.walletPublicKey || !user.walletPrivateKey) {
+      if (!user.walletPublicKey || !user.walletPrivateKey || user.walletPrivateKey.length !== 64) {
         await ctx.reply("❌ Wallet information incomplete. Please create a wallet using `/wallet` command.");
         return ctx.scene.leave();
       }
       
       // Create Keypair from the stored private key
       const secretKey = new Uint8Array(user.walletPrivateKey);
+      if (secretKey.length !== 64) {
+        throw new Error('Invalid secret key length');
+      }
       const keypair = Keypair.fromSecretKey(secretKey);
       
       // Check sender's balance
@@ -103,12 +106,12 @@ const sendScene = new Scenes.WizardScene(
         { commitment: 'confirmed' }
       );
       
-      await ctx.reply(`✅ Transaction successful!\n🔑 Signature: \`${signature}\``, { parse_mode: 'Markdown' });
+      await ctx.reply(`✅ Transaction successful!\n🔑 Signature: \`${signature}\`\n🔗 View on [Solana Explorer](https://explorer.solana.com/tx/${signature})`, { parse_mode: 'Markdown' });
       console.log(`[${new Date().toISOString()}] ✅ Transaction sent. Signature: ${signature}`);
       
     } catch (error) {
       console.error(`[${new Date().toISOString()}] ❌ Error processing transaction:`, error);
-      await ctx.reply("❌ An error occurred while processing your transaction. Please try again later.");
+      await ctx.reply("❌ An error occurred while processing your transaction. Please ensure your wallet is correctly set up and try again.");
     }
     
     return ctx.scene.leave();
