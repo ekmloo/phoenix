@@ -13,7 +13,7 @@ const UserSchema = new mongoose.Schema({
     default: null, // Initially null until wallet is created
   },
   walletPrivateKey: {
-    type: String,
+    type: Buffer, // Store as binary data
     default: null, // Initially null until wallet is created
   },
   createdAt: {
