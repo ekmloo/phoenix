@@ -15,8 +15,8 @@ if (!BOT_TOKEN) {
 
 const bot = new Telegraf(BOT_TOKEN);
 
-// Create a new Scene Manager and register the sendScene
-const stage = new Scenes.Stage([sendScene], { default: 'send-wizard' });
+// Create a new Stage without setting a default scene
+const stage = new Scenes.Stage([sendScene]);
 
 // Use session middleware
 bot.use(session());
@@ -38,13 +38,13 @@ console.log(`[${new Date().toISOString()}] ✅ Loaded command: /${startCommand.c
 bot.command(walletCommand.command, walletCommand.execute);
 console.log(`[${new Date().toISOString()}] ✅ Loaded command: /${walletCommand.command}`);
 
-// Register /send command to enter the send-wizard scene
-bot.command('send', (ctx) => ctx.scene.enter('send-wizard'));
-console.log(`[${new Date().toISOString()}] ✅ Loaded command: /send`);
-
 // Register /balance command
 bot.command(balanceCommand.command, balanceCommand.execute);
 console.log(`[${new Date().toISOString()}] ✅ Loaded command: /${balanceCommand.command}`);
+
+// Register /send command to enter the send-wizard scene
+bot.command('send', (ctx) => ctx.scene.enter('send-wizard'));
+console.log(`[${new Date().toISOString()}] ✅ Loaded command: /send`);
 
 // Handle unknown commands
 bot.on('text', (ctx) => {
