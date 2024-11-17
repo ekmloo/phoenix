@@ -10,11 +10,13 @@
     {
       "src": "/webhook",
       "methods": ["POST"],
-      "dest": "/index.js"
+      "dest": "/index.js",
+      "headers": {
+        "content-type": "application/json"
+      }
     },
     {
       "src": "/(.*)",
-      "methods": ["GET"],
       "dest": "/index.js"
     }
   ]
