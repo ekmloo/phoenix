@@ -30,32 +30,32 @@ module.exports = {
           // Wallet doesn't exist, create a new one
           const keypair = Keypair.generate();
           const publicKey = keypair.publicKey.toBase58();
-          const privateKey = Array.from(keypair.secretKey); // Convert Uint8Array to Array of numbers
+          const privateKey = Buffer.from(keypair.secretKey); // Uint8Array to Buffer
 
           // Update the user's document with wallet details
           user.walletPublicKey = publicKey;
-          user.walletPrivateKey = JSON.stringify(privateKey); // Store as JSON string
+          user.walletPrivateKey = privateKey;
           await user.save();
 
-          await ctx.reply(`🎉 Wallet created successfully!\n🔑 Your wallet address: ${publicKey}\n🗝️ Your private key:\n\`${user.walletPrivateKey}\``, { parse_mode: 'Markdown' });
+          await ctx.reply(`🎉 Wallet created successfully!\n🔑 Your wallet address: ${publicKey}`);
           console.log(`[${new Date().toISOString()}] 🆕 Created new wallet for user ${userId}`);
         }
       } else {
         // User doesn't exist, create a new user with wallet
         const keypair = Keypair.generate();
         const publicKey = keypair.publicKey.toBase58();
-        const privateKey = Array.from(keypair.secretKey); // Convert Uint8Array to Array of numbers
+        const privateKey = Buffer.from(keypair.secretKey); // Uint8Array to Buffer
 
         // Create new user with wallet details
         user = new User({
           telegramId: userId,
           walletPublicKey: publicKey,
-          walletPrivateKey: JSON.stringify(privateKey), // Store as JSON string
+          walletPrivateKey: privateKey,
         });
 
         await user.save();
 
-        await ctx.reply(`🎉 Wallet created successfully!\n🔑 Your wallet address: ${publicKey}\n🗝️ Your private key:\n\`${user.walletPrivateKey}\``, { parse_mode: 'Markdown' });
+        await ctx.reply(`🎉 Wallet created successfully!\n🔑 Your wallet address: ${publicKey}`);
         console.log(`[${new Date().toISOString()}] 🆕 Created new user and wallet for user ${userId}`);
       }
     } catch (error) {
