@@ -22,12 +22,12 @@ module.exports = {
       console.log(`[${new Date().toISOString()}] 🔍 Searched for user: ${user ? 'Found' : 'Not Found'}`);
 
       if (user) {
-        if (user.walletPublicKey && user.walletPrivateKey) {
-          // Wallet already exists
+        if (user.walletPublicKey && user.walletPrivateKey && user.walletPrivateKey.length === 64) {
+          // Wallet already exists and has correct private key size
           await ctx.reply(`🔑 Your wallet address: ${user.walletPublicKey}`);
           console.log(`[${new Date().toISOString()}] ✅ Retrieved existing wallet for user ${userId}`);
         } else {
-          // Wallet doesn't exist, create a new one
+          // Wallet doesn't exist or has incorrect private key size, create a new one
           const keypair = Keypair.generate();
           const publicKey = keypair.publicKey.toBase58();
           const privateKey = Buffer.from(keypair.secretKey); // Uint8Array to Buffer
