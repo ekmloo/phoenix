@@ -1,8 +1,9 @@
 // index.js
 
-const { Telegraf } = require('telegraf');
+const { Telegraf, Scenes, session } = require('telegraf');
 const startCommand = require('./commands/start');
 const walletCommand = require('./commands/wallet');
+const sendScene = require('./commands/send'); // We'll create this next
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 
@@ -12,6 +13,15 @@ if (!BOT_TOKEN) {
 }
 
 const bot = new Telegraf(BOT_TOKEN);
+
+// Create a new Scene Manager and register the sendScene
+const stage = new Scenes.Stage([sendScene], { default: 'send-wizard' });
+
+// Use session middleware
+bot.use(session());
+
+// Use stage middleware
+bot.use(stage.middleware());
 
 // Middleware to log all updates
 bot.use(async (ctx, next) => {
@@ -27,10 +37,14 @@ console.log(`[${new Date().toISOString()}] ✅ Loaded command: /${startCommand.c
 bot.command(walletCommand.command, walletCommand.execute);
 console.log(`[${new Date().toISOString()}] ✅ Loaded command: /${walletCommand.command}`);
 
+// Register /send command to enter the send-wizard scene
+bot.command('send', (ctx) => ctx.scene.enter('send-wizard'));
+console.log(`[${new Date().toISOString()}] ✅ Loaded command: /send`);
+
 // Handle unknown commands
 bot.on('text', (ctx) => {
   console.log(`[${new Date().toISOString()}] 🧐 Unknown command received: ${ctx.message.text} from user ${ctx.from.id}`);
-  ctx.reply('❓ Unknown command. Available commands:\n• `/start`\n• `/wallet`', { parse_mode: 'Markdown' });
+  ctx.reply('❓ Unknown command. Available commands:\n• `/start`\n• `/wallet`\n• `/send`', { parse_mode: 'Markdown' });
 });
 
 // Error Handling Middleware
@@ -38,7 +52,7 @@ bot.catch((err, ctx) => {
   console.error(`[${new Date().toISOString()}] ❌ Telegraf Error for ${ctx.updateType}:`, err);
 });
 
-// Export the webhook handler
+// Export the webhook handler for Vercel
 module.exports = async (req, res) => {
   const { method, url } = req;
 
