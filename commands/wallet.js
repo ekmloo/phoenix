@@ -3,6 +3,7 @@
 const connectToDatabase = require('../db');
 const User = require('../models/User');
 const { Keypair } = require('@solana/web3.js');
+const { encrypt } = require('../encryption'); // Import encryption functions
 
 module.exports = {
   command: 'wallet',
@@ -22,19 +23,21 @@ module.exports = {
       console.log(`[${new Date().toISOString()}] 🔍 Searched for user: ${user ? 'Found' : 'Not Found'}`);
 
       if (user) {
-        if (user.walletPublicKey && user.walletPrivateKey && user.walletPrivateKey.length === 64) {
-          // Wallet already exists and has correct private key size
+        if (user.walletPublicKey && user.walletPrivateKey) {
+          // Wallet already exists
           await ctx.reply(`🔑 Your wallet address: ${user.walletPublicKey}`);
           console.log(`[${new Date().toISOString()}] ✅ Retrieved existing wallet for user ${userId}`);
         } else {
-          // Wallet doesn't exist or has incorrect private key size, create a new one
+          // Wallet doesn't exist, create a new one
           const keypair = Keypair.generate();
           const publicKey = keypair.publicKey.toBase58();
-          const privateKey = Buffer.from(keypair.secretKey); // Uint8Array to Buffer
+          const privateKeyArray = Array.from(keypair.secretKey); // Convert Uint8Array to Array
+          const privateKeyString = JSON.stringify(privateKeyArray); // Convert Array to JSON string
+          const privateKeyEncrypted = encrypt(privateKeyString); // Encrypt the JSON string
 
-          // Update the user's document with wallet details
+          // Update the user's document with encrypted private key
           user.walletPublicKey = publicKey;
-          user.walletPrivateKey = privateKey;
+          user.walletPrivateKey = privateKeyEncrypted; // Store as string
           await user.save();
 
           await ctx.reply(`🎉 Wallet created successfully!\n🔑 Your wallet address: ${publicKey}`);
@@ -44,13 +47,15 @@ module.exports = {
         // User doesn't exist, create a new user with wallet
         const keypair = Keypair.generate();
         const publicKey = keypair.publicKey.toBase58();
-        const privateKey = Buffer.from(keypair.secretKey); // Uint8Array to Buffer
+        const privateKeyArray = Array.from(keypair.secretKey); // Convert Uint8Array to Array
+        const privateKeyString = JSON.stringify(privateKeyArray); // Convert Array to JSON string
+        const privateKeyEncrypted = encrypt(privateKeyString); // Encrypt the JSON string
 
         // Create new user with wallet details
         user = new User({
           telegramId: userId,
           walletPublicKey: publicKey,
-          walletPrivateKey: privateKey,
+          walletPrivateKey: privateKeyEncrypted, // Store as string
         });
 
         await user.save();
