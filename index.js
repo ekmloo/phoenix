@@ -3,7 +3,8 @@
 const { Telegraf, Scenes, session } = require('telegraf');
 const startCommand = require('./commands/start');
 const walletCommand = require('./commands/wallet');
-const sendScene = require('./commands/send'); // We'll create this next
+const sendScene = require('./commands/send');
+const balanceCommand = require('./commands/balance'); // Import the balance command
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 
@@ -41,10 +42,14 @@ console.log(`[${new Date().toISOString()}] ✅ Loaded command: /${walletCommand.
 bot.command('send', (ctx) => ctx.scene.enter('send-wizard'));
 console.log(`[${new Date().toISOString()}] ✅ Loaded command: /send`);
 
+// Register /balance command
+bot.command(balanceCommand.command, balanceCommand.execute);
+console.log(`[${new Date().toISOString()}] ✅ Loaded command: /${balanceCommand.command}`);
+
 // Handle unknown commands
 bot.on('text', (ctx) => {
   console.log(`[${new Date().toISOString()}] 🧐 Unknown command received: ${ctx.message.text} from user ${ctx.from.id}`);
-  ctx.reply('❓ Unknown command. Available commands:\n• `/start`\n• `/wallet`\n• `/send`', { parse_mode: 'Markdown' });
+  ctx.reply('❓ Unknown command. Available commands:\n• `/start`\n• `/wallet`\n• `/send`\n• `/balance`', { parse_mode: 'Markdown' });
 });
 
 // Error Handling Middleware
