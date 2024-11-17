@@ -1,5 +1,3 @@
-// commands/start.js
-
 module.exports = {
   command: 'start',
   description: 'Start the Phoenix Bot',
