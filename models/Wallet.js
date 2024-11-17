@@ -3,15 +3,19 @@
 const mongoose = require('mongoose');
 
 const WalletSchema = new mongoose.Schema({
-  userId: {
+  telegramId: {
     type: Number,
     required: true,
     unique: true,
   },
-  walletAddress: {
+  walletPublicKey: {
     type: String,
     required: true,
     unique: true,
+  },
+  walletPrivateKey: {
+    type: String,
+    required: true,
   },
   createdAt: {
     type: Date,
