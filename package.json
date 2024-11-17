@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "dependencies": {
     "telegraf": "^4.12.2",
-    "mongoose": "^7.0.0" // Add this line
+    "mongoose": "^7.0.0"
   },
   "engines": {
     "node": "20.x"
