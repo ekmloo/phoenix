@@ -2,22 +2,18 @@
 
 module.exports = {
   command: 'start',
-  description: 'Start command',
+  description: 'Start the Phoenix Bot',
   execute: async (ctx) => {
-    try {
-      const welcomeMessage = `
-👋 Welcome to the Phoenix Bot!
+    await ctx.reply(
+      `👋 Welcome to the Phoenix Bot!
 
 Use the following commands to interact:
 
 /start - Show this message
 /wallet - Create or retrieve your Solana wallet
-      `;
-      await ctx.reply(welcomeMessage);
-      console.log(`[${new Date().toISOString()}] ✅ /start command executed successfully.`);
-    } catch (error) {
-      console.error(`[${new Date().toISOString()}] ❌ Error executing /start command:`, error);
-      await ctx.reply('⚠️ An error occurred while processing your request.');
-    }
+/send - Send SOL to another wallet
+/balance - Check your wallet balance`
+    );
+    console.log(`[${new Date().toISOString()}] 📥 /start command executed by user ${ctx.from.id}`);
   },
 };
