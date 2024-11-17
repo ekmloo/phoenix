@@ -1,7 +1,6 @@
 // index.js
 
 const { Telegraf } = require('telegraf');
-const connectToDatabase = require('./db');
 const startCommand = require('./commands/start');
 const walletCommand = require('./commands/wallet');
 
@@ -14,7 +13,7 @@ if (!BOT_TOKEN) {
 
 const bot = new Telegraf(BOT_TOKEN);
 
-// Register middleware to log all updates
+// Middleware to log all updates
 bot.use(async (ctx, next) => {
   console.log(`[${new Date().toISOString()}] 📥 Received update:`, JSON.stringify(ctx.update, null, 2));
   await next();
