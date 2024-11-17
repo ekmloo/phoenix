@@ -1,8 +1,7 @@
 // index.js
 
 const { Telegraf } = require('telegraf');
-const fs = require('fs');
-const path = require('path');
+const startCommand = require('./commands/start');
 
 // Initialize environment variables
 const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -23,9 +22,7 @@ bot.use(async (ctx, next) => {
 });
 
 // Load /start command
-let startCommand;
 try {
-  startCommand = require('./commands/start');
   if (startCommand.command && typeof startCommand.execute === 'function') {
     bot.command(startCommand.command, startCommand.execute);
     console.log(`[${new Date().toISOString()}] ✅ Loaded command: /${startCommand.command}`);
@@ -48,38 +45,26 @@ bot.catch((err, ctx) => {
 });
 
 // Vercel Serverless Function Handler with Enhanced Logging
-module.exports = async (req, res) => {
-  const { method, url, headers } = req;
+module.exports = (req, res) => {
+  const { method, url, headers, body } = req;
   console.log(`[${new Date().toISOString()}] 📥 Received ${method} request for ${url}`);
   console.log(`[${new Date().toISOString()}] 📄 Headers:`, JSON.stringify(headers, null, 2));
-  
-  // Collect the body data
-  let body = '';
-  req.on('data', chunk => {
-    body += chunk.toString();
-  });
-  
-  req.on('end', async () => {
-    if (method === 'POST' && url === '/webhook') {
-      console.log(`[${new Date().toISOString()}] ✅ Processing POST request to /webhook`);
-      console.log(`[${new Date().toISOString()}] 📦 Body:`, body);
-      try {
-        const update = JSON.parse(body);
-        await bot.handleUpdate(update, res);
+
+  if (method === 'POST' && url === '/webhook') {
+    console.log(`[${new Date().toISOString()}] ✅ Processing POST request to /webhook`);
+    console.log(`[${new Date().toISOString()}] 📦 Body:`, JSON.stringify(body, null, 2));
+
+    bot.handleUpdate(body)
+      .then(() => {
         console.log(`[${new Date().toISOString()}] 🟢 Update processed successfully.`);
-      } catch (error) {
+        res.status(200).end();
+      })
+      .catch((error) => {
         console.error(`[${new Date().toISOString()}] ❌ Error processing update:`, error);
         res.status(500).send('Internal Server Error');
-      }
-    } else {
-      console.log(`[${new Date().toISOString()}] ℹ️ Non-webhook request received. Responding with status 200.`);
-      res.status(200).send('Phoenix Bot Webhook is active.');
-    }
-  });
-
-  // Handle request errors
-  req.on('error', (error) => {
-    console.error(`[${new Date().toISOString()}] ❌ Error receiving request:`, error);
-    res.status(400).send('Bad Request');
-  });
+      });
+  } else {
+    console.log(`[${new Date().toISOString()}] ℹ️ Non-webhook request received. Responding with status 200.`);
+    res.status(200).send('Phoenix Bot Webhook is active.');
+  }
 };
