@@ -1,8 +1,8 @@
-// models/Wallet.js
+// models/User.js
 
 const mongoose = require('mongoose');
 
-const WalletSchema = new mongoose.Schema({
+const UserSchema = new mongoose.Schema({
   telegramId: {
     type: Number,
     required: true,
@@ -10,12 +10,11 @@ const WalletSchema = new mongoose.Schema({
   },
   walletPublicKey: {
     type: String,
-    required: true,
-    unique: true,
+    default: null, // Initially null until wallet is created
   },
   walletPrivateKey: {
     type: String,
-    required: true,
+    default: null, // Initially null until wallet is created
   },
   createdAt: {
     type: Date,
@@ -23,4 +22,4 @@ const WalletSchema = new mongoose.Schema({
   },
 });
 
-module.exports = mongoose.models.Wallet || mongoose.model('Wallet', WalletSchema);
+module.exports = mongoose.models.User || mongoose.model('User', UserSchema);
