@@ -15,7 +15,7 @@ if (!BOT_TOKEN) {
 
 const bot = new Telegraf(BOT_TOKEN);
 
-// Create a new Stage without setting a default scene
+// Initialize Stage without default scene
 const stage = new Scenes.Stage([sendScene]);
 
 // Use session middleware
