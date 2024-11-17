@@ -42,15 +42,20 @@ bot.catch((err, ctx) => {
 module.exports = async (req, res) => {
   const { method, url } = req;
 
+  console.log(`[${new Date().toISOString()}] 📥 Incoming request: ${method} ${url}`);
+
   if (method === 'POST' && url === '/webhook') {
+    console.log(`[${new Date().toISOString()}] ✅ Processing webhook POST request`);
     try {
       await bot.handleUpdate(req.body);
       res.status(200).send('OK');
+      console.log(`[${new Date().toISOString()}] 🟢 Successfully processed webhook`);
     } catch (error) {
-      console.error('❌ Error handling update:', error);
+      console.error(`[${new Date().toISOString()}] ❌ Error processing webhook:`, error);
       res.status(500).send('Internal Server Error');
     }
   } else {
+    console.log(`[${new Date().toISOString()}] ℹ️ Non-webhook request received.`);
     res.status(200).send('Phoenix Bot is active.');
   }
 };
