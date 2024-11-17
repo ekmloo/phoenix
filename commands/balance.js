@@ -1,5 +1,3 @@
-// commands/balance.js
-
 const connectToDatabase = require('../db');
 const User = require('../models/User');
 const { Connection, PublicKey, clusterApiUrl } = require('@solana/web3.js');
@@ -44,7 +42,7 @@ module.exports = {
       }
 
       // Initialize Solana connection
-      const connection = new Connection(clusterApiUrl('mainnet-beta'), 'confirmed'); // Use 'devnet' for testing
+      const connection = new Connection(clusterApiUrl('mainnet-beta'), 'confirmed');
 
       const publicKey = new PublicKey(user.walletPublicKey);
 
