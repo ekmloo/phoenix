@@ -37,9 +37,9 @@ module.exports = {
         return;
       }
 
-      if (!user.walletPublicKey) {
-        await ctx.reply("❌ Wallet information incomplete. Please create a wallet using the `/wallet` command.");
-        console.log(`[${new Date().toISOString()}] ❌ Wallet information incomplete for user ${userId}`);
+      if (!user.walletPublicKey || !isValidSolanaAddress(user.walletPublicKey)) {
+        await ctx.reply("❌ Wallet information incomplete or invalid. Please create a wallet using the `/wallet` command.");
+        console.log(`[${new Date().toISOString()}] ❌ Wallet information incomplete or invalid for user ${userId}`);
         return;
       }
 
