@@ -1,5 +1,3 @@
-// index.js
-
 const { Telegraf, Scenes, session } = require('telegraf');
 const startCommand = require('./commands/start');
 const walletCommand = require('./commands/wallet');
@@ -46,8 +44,12 @@ console.log(`[${new Date().toISOString()}] ✅ Loaded command: /${balanceCommand
 bot.command('send', (ctx) => ctx.scene.enter('send-wizard'));
 console.log(`[${new Date().toISOString()}] ✅ Loaded command: /send`);
 
-// Handle unknown commands
+// Handle unknown commands only if not in a scene
 bot.on('text', (ctx) => {
+  if (ctx.scene && ctx.scene.current) {
+    // The user is currently in a scene; don't handle unknown commands
+    return;
+  }
   console.log(`[${new Date().toISOString()}] 🧐 Unknown command received: ${ctx.message.text} from user ${ctx.from.id}`);
   ctx.reply('❓ Unknown command. Available commands:\n• `/start`\n• `/wallet`\n• `/send`\n• `/balance`', { parse_mode: 'Markdown' });
 });
