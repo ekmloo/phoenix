@@ -4,6 +4,7 @@ const { Scenes } = require('telegraf');
 const { Connection, PublicKey, clusterApiUrl, Keypair, Transaction, SystemProgram, sendAndConfirmTransaction, LAMPORTS_PER_SOL } = require('@solana/web3.js');
 const connectToDatabase = require('../db');
 const User = require('../models/User');
+const { decrypt } = require('../encryption'); // Import decryption functions
 
 // Helper function to validate Solana wallet addresses
 function isValidSolanaAddress(address) {
@@ -66,16 +67,21 @@ const sendScene = new Scenes.WizardScene(
         return ctx.scene.leave();
       }
       
-      if (!user.walletPublicKey || !user.walletPrivateKey || user.walletPrivateKey.length !== 64) {
+      if (!user.walletPublicKey || !user.walletPrivateKey) {
         await ctx.reply("❌ Wallet information incomplete. Please create a wallet using `/wallet` command.");
         return ctx.scene.leave();
       }
       
-      // Create Keypair from the stored private key
-      const secretKey = new Uint8Array(user.walletPrivateKey);
+      // Decrypt the private key
+      const decryptedPrivateKeyString = decrypt(user.walletPrivateKey);
+      const decryptedPrivateKeyArray = JSON.parse(decryptedPrivateKeyString);
+      const secretKey = new Uint8Array(decryptedPrivateKeyArray);
+      
       if (secretKey.length !== 64) {
         throw new Error('Invalid secret key length');
       }
+      
+      // Create Keypair from the decrypted private key
       const keypair = Keypair.fromSecretKey(secretKey);
       
       // Check sender's balance
