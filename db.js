@@ -1,15 +1,13 @@
-// db.js
-
 const mongoose = require('mongoose');
 
+const MONGODB_URI = process.env.MONGODB_URI;
+
+let isConnected;
+
 const connectToDatabase = async () => {
-  if (mongoose.connection.readyState >= 1) return;
-
-  const MONGODB_URI = process.env.MONGODB_URI;
-
-  if (!MONGODB_URI) {
-    console.error('❌ Environment variable MONGODB_URI is not defined.');
-    process.exit(1);
+  if (isConnected) {
+    console.log('✅ Using existing MongoDB connection');
+    return Promise.resolve();
   }
 
   try {
@@ -17,10 +15,11 @@ const connectToDatabase = async () => {
       useNewUrlParser: true,
       useUnifiedTopology: true,
     });
+    isConnected = true;
     console.log('✅ Connected to MongoDB');
   } catch (error) {
-    console.error('❌ Failed to connect to MongoDB:', error);
-    process.exit(1);
+    console.error('❌ MongoDB connection error:', error);
+    throw error;
   }
 };
 
