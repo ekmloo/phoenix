@@ -1,21 +1,10 @@
 {
   "name": "phoenix-bot",
   "version": "1.0.0",
-  "description": "Phoenix Bot handling /start command",
-  "main": "index.js",
-  "scripts": {
-    "start": "node index.js"
-  },
-  "keywords": [
-    "telegram",
-    "bot",
-    "telegraf",
-    "vercel",
-    "serverless"
-  ],
-  "author": "Your Name",
-  "license": "MIT",
   "dependencies": {
     "telegraf": "^4.12.2"
+  },
+  "engines": {
+    "node": "14.x"
   }
 }
