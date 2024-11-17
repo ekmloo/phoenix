@@ -1,5 +1,3 @@
-// commands/wallet.js
-
 const connectToDatabase = require('../db');
 const User = require('../models/User');
 const { Keypair } = require('@solana/web3.js');
