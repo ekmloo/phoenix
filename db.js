@@ -2,44 +2,26 @@
 
 const mongoose = require('mongoose');
 
-const MONGODB_URI = process.env.MONGODB_URI;
+const connectToDatabase = async () => {
+  if (mongoose.connection.readyState >= 1) return;
 
-if (!MONGODB_URI) {
-  console.error('❌ Environment variable MONGODB_URI is not defined.');
-  process.exit(1);
-}
+  const MONGODB_URI = process.env.MONGODB_URI;
 
-/**
- * Global is used here to maintain a cached connection across hot reloads
- * in development. This prevents connections growing exponentially
- * during API Route usage.
- */
-let cached = global.mongoose;
-
-if (!cached) {
-  cached = global.mongoose = { conn: null, promise: null };
-}
-
-async function connectToDatabase() {
-  if (cached.conn) {
-    return cached.conn;
+  if (!MONGODB_URI) {
+    console.error('❌ Environment variable MONGODB_URI is not defined.');
+    process.exit(1);
   }
 
-  if (!cached.promise) {
-    const opts = {
-      bufferCommands: false,
-    };
-
-    cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongoose) => {
-      return mongoose;
-    }).catch((error) => {
-      console.error('❌ MongoDB connection error:', error);
-      process.exit(1);
+  try {
+    await mongoose.connect(MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
     });
+    console.log('✅ Connected to MongoDB');
+  } catch (error) {
+    console.error('❌ Failed to connect to MongoDB:', error);
+    process.exit(1);
   }
-
-  cached.conn = await cached.promise;
-  return cached.conn;
-}
+};
 
 module.exports = connectToDatabase;
