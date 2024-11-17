@@ -16,19 +16,31 @@ if (!BOT_TOKEN) {
 // Initialize Telegraf Bot
 const bot = new Telegraf(BOT_TOKEN);
 
-// Load command files dynamically from the commands directory
-const commandsPath = path.join(__dirname, 'commands');
-const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+// Function to load commands dynamically
+const loadCommands = () => {
+  const commandsPath = path.join(__dirname, 'commands');
 
-for (const file of commandFiles) {
-  const command = require(path.join(commandsPath, file));
-  if (command.command && typeof command.execute === 'function') {
-    bot.command(command.command, command.execute);
-    console.log(`✅ Loaded command: /${command.command}`);
-  } else {
-    console.warn(`⚠️ Skipping file ${file}: Missing 'command' or 'execute'`);
+  // Check if commands directory exists
+  if (!fs.existsSync(commandsPath)) {
+    console.warn('⚠️ Commands directory does not exist.');
+    return;
   }
-}
+
+  const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+
+  commandFiles.forEach(file => {
+    const command = require(path.join(commandsPath, file));
+    if (command.command && typeof command.execute === 'function') {
+      bot.command(command.command, command.execute);
+      console.log(`✅ Loaded command: /${command.command}`);
+    } else {
+      console.warn(`⚠️ Skipping file ${file}: Missing 'command' or 'execute'`);
+    }
+  });
+};
+
+// Load all commands
+loadCommands();
 
 // Handle unknown commands
 bot.on('text', (ctx) => {
@@ -43,7 +55,7 @@ bot.catch((err, ctx) => {
 // Vercel Serverless Function Handler
 module.exports = async (req, res) => {
   console.log(`Received ${req.method} request for ${req.url}`);
-  
+
   if (req.method === 'POST' && req.url === '/webhook') {
     try {
       console.log('✅ Processing POST request');
