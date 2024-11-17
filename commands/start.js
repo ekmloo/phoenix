@@ -11,7 +11,7 @@ module.exports = {
 Use the following commands to interact:
 
 /start - Show this message
-/wallet - Create or retrieve your wallet
+/wallet - Create or retrieve your Solana wallet
       `;
       await ctx.reply(welcomeMessage);
       console.log(`[${new Date().toISOString()}] ✅ /start command executed successfully.`);
