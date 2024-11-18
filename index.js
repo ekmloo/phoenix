@@ -62,16 +62,13 @@ bot.catch((err, ctx) => {
   console.error(`[${new Date().toISOString()}] ❌ Telegraf Error for ${ctx.updateType}:`, err);
 });
 
-// Export the bot instance
-module.exports.bot = bot;
-
 // Export the webhook handler for Vercel
-module.exports.webhook = async (req, res) => {
+module.exports = async (req, res) => {
   const { method, url } = req;
 
   console.log(`[${new Date().toISOString()}] 📥 Incoming request: ${method} ${url}`);
 
-  if (method === 'POST' && url === '/webhook') {
+  if (method === 'POST') {
     console.log(`[${new Date().toISOString()}] ✅ Processing webhook POST request`);
     try {
       await bot.handleUpdate(req.body);
