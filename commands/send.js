@@ -2,9 +2,8 @@ const { Scenes } = require('telegraf');
 const { Connection, PublicKey, clusterApiUrl, Keypair, Transaction, SystemProgram, sendAndConfirmTransaction, LAMPORTS_PER_SOL } = require('@solana/web3.js');
 const connectToDatabase = require('../db');
 const User = require('../models/User');
-const { decrypt } = require('../encryption'); // Import decryption functions
+const { decrypt } = require('../encryption');
 
-// Helper function to validate Solana wallet addresses
 function isValidSolanaAddress(address) {
   try {
     new PublicKey(address);
@@ -25,10 +24,17 @@ const sendScene = new Scenes.WizardScene(
 
   // Step 2: Receive and validate recipient's wallet address
   async (ctx) => {
-    if (ctx.message.text === '/cancel') {
-      await ctx.reply('❌ Send operation cancelled.');
-      return ctx.scene.leave();
+    // Handle commands first
+    if (ctx.message && ctx.message.text && ctx.message.text.startsWith('/')) {
+      if (ctx.message.text === '/cancel') {
+        await ctx.reply('❌ Send operation cancelled.');
+        return ctx.scene.leave();
+      }
+      // If it's any other command, leave the scene and let the command be handled
+      await ctx.scene.leave();
+      return;
     }
+
     const recipientAddress = ctx.message.text.trim();
 
     if (!isValidSolanaAddress(recipientAddress)) {
@@ -43,10 +49,17 @@ const sendScene = new Scenes.WizardScene(
 
   // Step 3: Receive and validate amount, then process the transaction
   async (ctx) => {
-    if (ctx.message.text === '/cancel') {
-      await ctx.reply('❌ Send operation cancelled.');
-      return ctx.scene.leave();
+    // Handle commands first
+    if (ctx.message && ctx.message.text && ctx.message.text.startsWith('/')) {
+      if (ctx.message.text === '/cancel') {
+        await ctx.reply('❌ Send operation cancelled.');
+        return ctx.scene.leave();
+      }
+      // If it's any other command, leave the scene and let the command be handled
+      await ctx.scene.leave();
+      return;
     }
+
     const amountText = ctx.message.text.trim();
     const amount = parseFloat(amountText);
 
@@ -105,7 +118,7 @@ const sendScene = new Scenes.WizardScene(
       const transaction = new Transaction().add(
         SystemProgram.transfer({
           fromPubkey: keypair.publicKey,
-          toPubkey: ctx.wizard.state.recipient,
+          toPubkey: new PublicKey(ctx.wizard.state.recipient),
           lamports: lamportsToSend,
         })
       );
@@ -134,10 +147,17 @@ const sendScene = new Scenes.WizardScene(
   }
 );
 
-// Optional: Add a command handler for /cancel
-sendScene.command('cancel', async (ctx) => {
-  await ctx.reply('❌ Send operation cancelled.');
-  return ctx.scene.leave();
+// Add handlers for all commands to exit the scene
+const commands = ['start', 'wallet', 'balance', 'send'];
+commands.forEach(command => {
+  sendScene.command(command, async (ctx) => {
+    await ctx.scene.leave();
+  });
+});
+
+// Add a handler for any message that starts with '/'
+sendScene.hears(/^\/.*/, async (ctx) => {
+  await ctx.scene.leave();
 });
 
 module.exports = sendScene;
