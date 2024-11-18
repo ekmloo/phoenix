@@ -41,7 +41,10 @@ bot.command(balanceCommand.command, balanceCommand.execute);
 console.log(`[${new Date().toISOString()}] ✅ Loaded command: /${balanceCommand.command}`);
 
 // Register /send command to enter the send-wizard scene
-bot.command('send', (ctx) => ctx.scene.enter('send-wizard'));
+bot.command('send', (ctx) => {
+    console.log(`[${new Date().toISOString()}] 🔄 Entering send-wizard scene`);
+    return ctx.scene.enter('send-wizard');
+});
 console.log(`[${new Date().toISOString()}] ✅ Loaded command: /send`);
 
 // Handle unknown commands only if not in a scene
@@ -59,8 +62,11 @@ bot.catch((err, ctx) => {
   console.error(`[${new Date().toISOString()}] ❌ Telegraf Error for ${ctx.updateType}:`, err);
 });
 
+// Export the bot instance
+module.exports.bot = bot;
+
 // Export the webhook handler for Vercel
-module.exports = async (req, res) => {
+module.exports.webhook = async (req, res) => {
   const { method, url } = req;
 
   console.log(`[${new Date().toISOString()}] 📥 Incoming request: ${method} ${url}`);
