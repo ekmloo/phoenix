@@ -49,30 +49,29 @@ const sendScene = new Scenes.WizardScene(
 
   // Step 3: Receive and validate amount, then process the transaction
   async (ctx) => {
-    // Handle commands first
-    if (ctx.message && ctx.message.text && ctx.message.text.startsWith('/')) {
-      if (ctx.message.text === '/cancel') {
-        await ctx.reply('❌ Send operation cancelled.');
-        return ctx.scene.leave();
-      }
-      // If it's any other command, leave the scene and let the command be handled
-      await ctx.scene.leave();
-      return;
-    }
-
-    const amountText = ctx.message.text.trim();
-    const amount = parseFloat(amountText);
-
-    if (isNaN(amount) || amount <= 0) {
-      await ctx.reply("⚠️ Invalid amount. Please enter a positive number for the amount of SOL or type `/cancel` to abort:");
-      return; // Stay in the current step
-    }
-
-    ctx.wizard.state.amount = amount;
-
-    await ctx.reply("🔄 Processing your transaction...");
-
     try {
+      // Handle commands first
+      if (ctx.message && ctx.message.text && ctx.message.text.startsWith('/')) {
+        if (ctx.message.text === '/cancel') {
+          await ctx.reply('❌ Send operation cancelled.');
+          return ctx.scene.leave();
+        }
+        // If it's any other command, leave the scene and let the command be handled
+        await ctx.scene.leave();
+        return;
+      }
+
+      const amountText = ctx.message.text.trim();
+      const amount = parseFloat(amountText);
+
+      if (isNaN(amount) || amount <= 0) {
+        await ctx.reply("⚠️ Invalid amount. Please enter a positive number for the amount of SOL or type `/cancel` to abort:");
+        return; // Stay in the current step
+      }
+
+      ctx.wizard.state.amount = amount;
+      await ctx.reply("🔄 Processing your transaction...");
+
       // Connect to MongoDB
       await connectToDatabase();
       console.log(`[${new Date().toISOString()}] 🔗 Connected to MongoDB`);
@@ -100,64 +99,71 @@ const sendScene = new Scenes.WizardScene(
         throw new Error('Invalid secret key length');
       }
 
-      // Create Keypair from the decrypted private key
-      const keypair = Keypair.fromSecretKey(secretKey);
-
-      // Check sender's balance
-      const connection = new Connection(clusterApiUrl('mainnet-beta'), 'confirmed');
-      const senderBalance = await connection.getBalance(keypair.publicKey);
-
-      const lamportsToSend = amount * LAMPORTS_PER_SOL;
-
-      if (senderBalance < lamportsToSend + 5000) { // Adding a small buffer for transaction fees
-        await ctx.reply("⚠️ Insufficient balance to complete the transaction.");
-        return ctx.scene.leave();
-      }
-
+      // Connect to Solana mainnet
+      const connection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
+      
+      // Create keypair from secret key
+      const senderKeypair = Keypair.fromSecretKey(secretKey);
+      
+      // Get sender's public key
+      const senderPublicKey = senderKeypair.publicKey;
+      
+      // Create recipient public key
+      const recipientPublicKey = new PublicKey(ctx.wizard.state.recipient);
+      
+      // Get recent blockhash
+      const { blockhash } = await connection.getRecentBlockhash();
+      
       // Create transaction
       const transaction = new Transaction().add(
         SystemProgram.transfer({
-          fromPubkey: keypair.publicKey,
-          toPubkey: new PublicKey(ctx.wizard.state.recipient),
-          lamports: lamportsToSend,
+          fromPubkey: senderPublicKey,
+          toPubkey: recipientPublicKey,
+          lamports: ctx.wizard.state.amount * LAMPORTS_PER_SOL,
         })
       );
-
-      // Send transaction
+      
+      // Set recent blockhash and fee payer
+      transaction.recentBlockhash = blockhash;
+      transaction.feePayer = senderPublicKey;
+      
+      console.log(`[${new Date().toISOString()}] 📝 Transaction created`);
+      
+      // Sign and send transaction
       const signature = await sendAndConfirmTransaction(
         connection,
         transaction,
-        [keypair],
-        { commitment: 'confirmed' }
+        [senderKeypair]
       );
-
-      await ctx.reply(`✅ Transaction successful!\n🔑 Signature: \`${signature}\`\n🔗 View on [Solana Explorer](https://explorer.solana.com/tx/${signature})`, { parse_mode: 'Markdown' });
-      console.log(`[${new Date().toISOString()}] ✅ Transaction sent. Signature: ${signature}`);
-
+      
+      console.log(`[${new Date().toISOString()}] ✅ Transaction confirmed: ${signature}`);
+      
+      // Send success message
+      await ctx.reply(
+        `✅ Transaction successful!\n\n` +
+        `Amount: ${ctx.wizard.state.amount} SOL\n` +
+        `Recipient: \`${ctx.wizard.state.recipient}\`\n` +
+        `Transaction: [View on Solana Explorer](https://explorer.solana.com/tx/${signature})`,
+        { parse_mode: 'Markdown', disable_web_page_preview: true }
+      );
+      
     } catch (error) {
       console.error(`[${new Date().toISOString()}] ❌ Error processing transaction:`, error);
-      if (error.message.includes('Invalid secret key length')) {
-        await ctx.reply("❌ Your wallet seems corrupted. Please recreate it using `/wallet` command.");
+      
+      let errorMessage = '❌ Transaction failed: ';
+      
+      if (error.message.includes('insufficient funds')) {
+        errorMessage += 'Insufficient funds in your wallet.';
       } else {
-        await ctx.reply("❌ An error occurred while processing your transaction. Please try again later.");
+        errorMessage += 'An unexpected error occurred. Please try again later.';
       }
+      
+      await ctx.reply(errorMessage);
     }
-
+    
     return ctx.scene.leave();
   }
 );
 
-// Add handlers for all commands to exit the scene
-const commands = ['start', 'wallet', 'balance', 'send'];
-commands.forEach(command => {
-  sendScene.command(command, async (ctx) => {
-    await ctx.scene.leave();
-  });
-});
-
-// Add a handler for any message that starts with '/'
-sendScene.hears(/^\/.*/, async (ctx) => {
-  await ctx.scene.leave();
-});
-
+// Export the scene
 module.exports = sendScene;
