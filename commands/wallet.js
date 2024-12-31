@@ -2,6 +2,7 @@ const connectToDatabase = require('../db');
 const User = require('../models/User');
 const { Keypair } = require('@solana/web3.js');
 const bs58 = require('bs58'); // Import the bs58 package
+const { Markup } = require('telegraf'); // Import Markup for inline keyboards
 
 module.exports = {
   command: 'wallet',
@@ -32,7 +33,12 @@ module.exports = {
         // Convert private key to Base58 format
         const privateKeyBase58 = bs58.encode(privateKey); // Convert to Base58
 
-        await ctx.reply(`🎉 Wallet created successfully! Your wallet address: ${publicKey}\nKeep your private key safe (Delete this message after copying): ${privateKeyBase58}`);
+        // Create an inline keyboard with a button
+        const keyboard = Markup.inlineKeyboard([
+          [Markup.button.callback('I copied it', 'copied_private_key')]
+        ]);
+
+        await ctx.reply(`🎉 Wallet created successfully! Your wallet address: ${publicKey}\nKeep your private key safe (Delete this message after copying): ${privateKeyBase58}`, keyboard);
       } else {
         await ctx.reply(`🔑 Your wallet address: ${user.walletPublicKey}`);
       }
