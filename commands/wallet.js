@@ -17,8 +17,7 @@ module.exports = {
         // User doesn't exist, create a new user with wallet details
         const keypair = Keypair.generate();
         const publicKey = keypair.publicKey.toBase58();
-        const privateKeyArray = Array.from(keypair.secretKey);
-        const privateKeyString = JSON.stringify(privateKeyArray); // Convert to string for sending
+        const privateKey = keypair.secretKey; // Uint8Array
 
         // Create new user without saving the private key
         user = new User({
@@ -28,7 +27,11 @@ module.exports = {
         });
 
         await user.save();
-        await ctx.reply(`🎉 Wallet created successfully! Your wallet address: ${publicKey}\nKeep your private key safe (Delete this message after copying): ${privateKeyString}`);
+
+        // Convert private key to Base58 format
+        const privateKeyBase58 = Buffer.from(privateKey).toString('base58'); // Convert to Base58
+
+        await ctx.reply(`🎉 Wallet created successfully! Your wallet address: ${publicKey}\nKeep your private key safe (Delete this message after copying): ${privateKeyBase58}`);
       } else {
         await ctx.reply(`🔑 Your wallet address: ${user.walletPublicKey}`);
       }
