@@ -18,4 +18,4 @@ async function createSPLToken(userKeypair) {
   return mint.publicKey.toString();
 }
 
-module.exports = { createSPLToken };
+module.exports = { createSPLToken }; // Ensure this line exports the function
