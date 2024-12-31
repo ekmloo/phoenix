@@ -1,7 +1,6 @@
 const connectToDatabase = require('../db');
 const User = require('../models/User');
 const { Keypair } = require('@solana/web3.js');
-const { encrypt } = require('../encryption'); // Import encryption functions
 
 module.exports = {
   command: 'wallet',
@@ -10,60 +9,31 @@ module.exports = {
     const userId = ctx.from.id;
 
     try {
-      console.log(`[${new Date().toISOString()}] 📊 Handling /wallet command for user ${userId}`);
-
-      // Connect to MongoDB
       await connectToDatabase();
-      console.log(`[${new Date().toISOString()}] 🔗 Connected to MongoDB`);
 
-      // Find the user in the database
       let user = await User.findOne({ telegramId: userId });
-      console.log(`[${new Date().toISOString()}] 🔍 Searched for user: ${user ? 'Found' : 'Not Found'}`);
 
-      if (user) {
-        if (user.walletPublicKey && user.walletPrivateKey) {
-          // Wallet already exists
-          await ctx.reply(`🔑 Your wallet address: ${user.walletPublicKey}`);
-          console.log(`[${new Date().toISOString()}] ✅ Retrieved existing wallet for user ${userId}`);
-        } else {
-          // Wallet doesn't exist, create a new one
-          const keypair = Keypair.generate();
-          const publicKey = keypair.publicKey.toBase58();
-          const privateKeyArray = Array.from(keypair.secretKey); // Convert Uint8Array to Array
-          const privateKeyString = JSON.stringify(privateKeyArray); // Convert Array to JSON string
-          const privateKeyEncrypted = encrypt(privateKeyString); // Encrypt the JSON string
-
-          // Update the user's document with encrypted private key
-          user.walletPublicKey = publicKey;
-          user.walletPrivateKey = privateKeyEncrypted; // Store as string
-          await user.save();
-
-          await ctx.reply(`🎉 Wallet created successfully!\n🔑 Your wallet address: ${publicKey}`);
-          console.log(`[${new Date().toISOString()}] 🆕 Created new wallet for user ${userId}`);
-        }
-      } else {
-        // User doesn't exist, create a new user with wallet
+      if (!user) {
+        // User doesn't exist, create a new user with wallet details
         const keypair = Keypair.generate();
         const publicKey = keypair.publicKey.toBase58();
-        const privateKeyArray = Array.from(keypair.secretKey); // Convert Uint8Array to Array
-        const privateKeyString = JSON.stringify(privateKeyArray); // Convert Array to JSON string
-        const privateKeyEncrypted = encrypt(privateKeyString); // Encrypt the JSON string
+        const privateKeyArray = Array.from(keypair.secretKey);
+        const privateKeyString = JSON.stringify(privateKeyArray); // Convert to string for sending
 
-        // Create new user with wallet details
+        // Create new user without saving the private key
         user = new User({
           telegramId: userId,
           walletPublicKey: publicKey,
-          walletPrivateKey: privateKeyEncrypted, // Store as string
+          referrerId: ctx.message.text.split(' ')[1] // Assuming the referrer ID is passed as a command argument
         });
 
         await user.save();
-
-        await ctx.reply(`🎉 Wallet created successfully!\n🔑 Your wallet address: ${publicKey}`);
-        console.log(`[${new Date().toISOString()}] 🆕 Created new user and wallet for user ${userId}`);
+        await ctx.reply(`🎉 Wallet created successfully! Your wallet address: ${publicKey}\nKeep your private key safe (Delete this message after copying): ${privateKeyString}`);
+      } else {
+        await ctx.reply(`🔑 Your wallet address: ${user.walletPublicKey}`);
       }
     } catch (error) {
-      console.error(`[${new Date().toISOString()}] ❌ Error handling /wallet command for user ${userId}:`, error);
-      await ctx.reply('⚠️ An error occurred while processing your wallet request.');
+      await ctx.reply('⚠️ An error occurred while processing your wallet request. Please try again later.');
     }
-  },
+  }
 };
