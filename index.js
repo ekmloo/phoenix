@@ -1,9 +1,9 @@
 const { Telegraf, Scenes, session } = require('telegraf');
 const startCommand = require('./commands/start');
 const walletCommand = require('./commands/wallet');
+const createTokenCommand = require('./commands/createToken'); // Import the createToken command
 const sendScene = require('./commands/send');
 const balanceCommand = require('./commands/balance');
-const helpCommand = require('./commands/help');
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 
@@ -41,14 +41,30 @@ console.log(`[${new Date().toISOString()}] ✅ Loaded command: /${walletCommand.
 bot.command(balanceCommand.command, balanceCommand.execute);
 console.log(`[${new Date().toISOString()}] ✅ Loaded command: /${balanceCommand.command}`);
 
-//help
-bot.command(helpCommand.command, helpCommand.execute); // Add this line
-console.log(`[${new Date().toISOString()}] ✅ Loaded command: /${helpCommand.command}`);
+// Register /create_token command
+bot.command('create_token', async (ctx) => {
+  const userId = ctx.from.id;
+  const fee = 0.015; // Set the fee for creating the token
+
+  // Check if the user has enough balance and deduct the fee
+  const user = await User.findOne({ telegramId: userId });
+  if (user.paidVolume >= fee) {
+    user.paidVolume -= fee; // Deduct fee
+    await user.save();
+
+    // Create the SPL token
+    const userKeypair = Keypair.fromSecretKey(new Uint8Array(JSON.parse(user.walletPrivateKey))); // Use the user's keypair
+    const tokenAddress = await createSPLToken(userKeypair); // Pass the user's keypair
+    ctx.reply(`Token created successfully! Token address: ${tokenAddress}`);
+  } else {
+    ctx.reply('⚠️ You do not have enough balance to create a token.');
+  }
+});
 
 // Register /send command to enter the send-wizard scene
 bot.command('send', (ctx) => {
-    console.log(`[${new Date().toISOString()}] 🔄 Entering send-wizard scene`);
-    return ctx.scene.enter('send-wizard');
+  console.log(`[${new Date().toISOString()}] 🔄 Entering send-wizard scene`);
+  return ctx.scene.enter('send-wizard');
 });
 console.log(`[${new Date().toISOString()}] ✅ Loaded command: /send`);
 
@@ -59,7 +75,7 @@ bot.on('text', (ctx) => {
     return;
   }
   console.log(`[${new Date().toISOString()}] 🧐 Unknown command received: ${ctx.message.text} from user ${ctx.from.id}`);
-  ctx.reply('Unknown command ❓', { parse_mode: 'Markdown' });
+  ctx.reply('❓ Unknown command', { parse_mode: 'Markdown' });
 });
 
 // Error Handling Middleware
