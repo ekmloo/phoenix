@@ -59,7 +59,7 @@ bot.on('text', (ctx) => {
     return;
   }
   console.log(`[${new Date().toISOString()}] 🧐 Unknown command received: ${ctx.message.text} from user ${ctx.from.id}`);
-  ctx.reply('❓ Unknown command. Available commands:\n• `/start`\n• `/wallet`\n• `/send`\n• `/balance`', { parse_mode: 'Markdown' });
+  ctx.reply('Unknown command ❓', { parse_mode: 'Markdown' });
 });
 
 // Error Handling Middleware
