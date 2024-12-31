@@ -8,6 +8,7 @@ module.exports = {
 Use the following commands to interact:
 
 /start - Show this message
+/help - Get help from the official group
 /wallet - Create or show your Solana wallet
 /send - Send SOL to another wallet
 /balance - Check your wallet balance`
