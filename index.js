@@ -4,6 +4,7 @@ const walletCommand = require('./commands/wallet');
 const createTokenCommand = require('./commands/createToken'); // Import the createToken command
 const sendScene = require('./commands/send');
 const balanceCommand = require('./commands/balance');
+const { createSPLToken } = require('./commands/createToken'); // Ensure this line is correct
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 
