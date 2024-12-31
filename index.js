@@ -3,6 +3,7 @@ const startCommand = require('./commands/start');
 const walletCommand = require('./commands/wallet');
 const sendScene = require('./commands/send');
 const balanceCommand = require('./commands/balance');
+const helpCommand = require('./commands/help');
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 
@@ -39,6 +40,10 @@ console.log(`[${new Date().toISOString()}] ✅ Loaded command: /${walletCommand.
 // Register /balance command
 bot.command(balanceCommand.command, balanceCommand.execute);
 console.log(`[${new Date().toISOString()}] ✅ Loaded command: /${balanceCommand.command}`);
+
+//help
+bot.command(helpCommand.command, helpCommand.execute); // Add this line
+console.log(`[${new Date().toISOString()}] ✅ Loaded command: /${helpCommand.command}`);
 
 // Register /send command to enter the send-wizard scene
 bot.command('send', (ctx) => {
