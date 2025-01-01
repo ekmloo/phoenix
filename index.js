@@ -1,9 +1,10 @@
 const { Telegraf, Scenes, session } = require('telegraf');
 const startCommand = require('./commands/start');
 const walletCommand = require('./commands/wallet');
-const { createSPLToken } = require('./commands/createToken'); // Ensure this line is correct
+const createTokenCommand = require('./commands/createToken'); // Import the createToken command
 const sendScene = require('./commands/send');
 const balanceCommand = require('./commands/balance');
+const helpCommand = require('./commands/help');
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 
@@ -60,6 +61,10 @@ bot.command('create_token', async (ctx) => {
     ctx.reply('⚠️ You do not have enough balance to create a token.');
   }
 });
+
+// Register /help command
+bot.command(helpCommand.command, helpCommand.execute); // Register help command
+console.log(`[${new Date().toISOString()}] ✅ Loaded command: /${helpCommand.command}`);
 
 // Register /send command to enter the send-wizard scene
 bot.command('send', (ctx) => {
