@@ -35,10 +35,10 @@ module.exports = {
 
         // Create an inline keyboard with a button
         const keyboard = Markup.inlineKeyboard([
-          [Markup.button.callback('Delete this message after copying❗', 'copied_private_key')]
+          [Markup.button.callback('I copied it', 'copied_private_key')]
         ]);
 
-        await ctx.reply(`🎉 Wallet created successfully! Your wallet address:${publicKey}\nKeep your private key safe: ${privateKeyBase58}`, keyboard);
+        await ctx.reply(`🎉 Wallet created successfully! Your wallet address: ${publicKey}\nKeep your private key safe (Delete this message after copying): ${privateKeyBase58}`, keyboard);
       } else {
         await ctx.reply(`🔑 Your wallet address: ${user.walletPublicKey}`);
       }
