@@ -5,7 +5,7 @@ const createTokenCommand = require('./commands/createToken'); // Import the crea
 const sendScene = require('./commands/send');
 const balanceCommand = require('./commands/balance');
 const helpCommand = require('./commands/help');
-
+const { handleCheckReferralsCommand } = require('./commands/checkReferrals'); // Import the check referrals command
 const BOT_TOKEN = process.env.BOT_TOKEN;
 
 if (!BOT_TOKEN) {
@@ -37,6 +37,10 @@ console.log(`[${new Date().toISOString()}] ✅ Loaded command: /${startCommand.c
 // Register /wallet command
 bot.command(walletCommand.command, walletCommand.execute);
 console.log(`[${new Date().toISOString()}] ✅ Loaded command: /${walletCommand.command}`);
+
+// Register /check_referrals command
+bot.command('check_referrals', handleCheckReferralsCommand);
+console.log(`[${new Date().toISOString()}] ✅ Loaded command: /check_referrals`);
 
 // Register /balance command
 bot.command(balanceCommand.command, balanceCommand.execute);
