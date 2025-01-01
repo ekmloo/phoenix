@@ -5,19 +5,24 @@ const User = require('../models/User'); // Import the User model
 async function createSPLToken(userKeypair, tokenName, tokenSymbol) {
   const connection = new Connection(clusterApiUrl('devnet'), 'confirmed');
 
-  // Create a new token
-  const mint = await Token.createMint(
-    connection,
-    userKeypair,
-    userKeypair.publicKey,
-    null,
-    9, // Decimals
-    TOKEN_PROGRAM_ID
-  );
+  try {
+    // Create a new token
+    const mint = await Token.createMint(
+      connection,
+      userKeypair,
+      userKeypair.publicKey,
+      null,
+      9, // Decimals
+      TOKEN_PROGRAM_ID
+    );
 
-  console.log(`Created new token with mint address: ${mint.publicKey.toString()}`);
-  console.log(`Token Name: ${tokenName}, Token Symbol: ${tokenSymbol}`);
-  return mint.publicKey.toString();
+    console.log(`Created new token with mint address: ${mint.publicKey.toString()}`);
+    console.log(`Token Name: ${tokenName}, Token Symbol: ${tokenSymbol}`);
+    return mint.publicKey.toString();
+  } catch (error) {
+    console.error('Error creating SPL token:', error); // Log the error
+    throw new Error('Failed to create the SPL token.'); // Throw an error to be handled later
+  }
 }
 
 // Function to handle token creation command
@@ -47,24 +52,25 @@ async function handleCreateTokenCommand(ctx) {
   await ctx.reply('Please provide the token symbol (ticker):');
   const tokenSymbol = await ctx.reply(); // Assume user provides symbol in next message
 
-  // Create the SPL token
-  const userKeypair = Keypair.fromSecretKey(new Uint8Array(JSON.parse(user.walletPrivateKey))); // Use the user's keypair
-  const tokenAddress = await createSPLToken(userKeypair, tokenName, tokenSymbol); // Pass the user's keypair
+  try {
+    // Create the SPL token
+    const userKeypair = Keypair.fromSecretKey(new Uint8Array(JSON.parse(user.walletPrivateKey))); // Use the user's keypair
+    const tokenAddress = await createSPLToken(userKeypair, tokenName, tokenSymbol); // Pass the user's keypair
 
-  // Handle referral logic immediately after creating the token
-  if (user.referrerId) {
-    const referrer = await User.findOne({ telegramId: user.referrerId });
-    if (referrer) {
-      referrer.feesEarned += fee; // Add the fee to the referrer's earned fees
-      await referrer.save(); // Save the referrer's updated fees
+    // Handle referral logic immediately after creating the token
+    if (user.referrerId) {
+      const referrer = await User.findOne({ telegramId: user.referrerId });
+      if (referrer) {
+        referrer.feesEarned += fee; // Add the fee to the referrer's earned fees
+        await referrer.save(); // Save the referrer's updated fees
+      }
     }
+
+    ctx.reply(`Token created successfully! Token address: ${tokenAddress}`);
+  } catch (error) {
+    console.error('Error in handleCreateTokenCommand:', error); // Log the error
+    ctx.reply('⚠️ An error occurred while creating the token. Please try again later.');
   }
-
-  // Update the user's paid volume
-  user.paidVolume += fee; // Add the fee to the user's paid volume
-  await user.save();
-
-  ctx.reply(`Token created successfully! Token address: ${tokenAddress}`);
 }
 
 module.exports = { createSPLToken, handleCreateTokenCommand };
